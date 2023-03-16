@@ -20,7 +20,7 @@ featured: true
 
 Java 虚拟机的指令由**一个字节长度**的、代表着某种特定操作含义的数字（称为操作码，Opcode)，以及跟随其后的**零至多个**代表此操作所需参数（称为操作数， Operand） 而构成。由于 Java 虚拟机采用面向操作数栈而不是寄存器的结构，所以大多数的指令都不包含操作数， 只有一个操作码。
 
-由于限制了Java虚拟机操作码的长度为一个字节(0,255)，这意味着指令集的操作码总数不可能超过 256 条。
+由于限制了 Java 虚拟机操作码的长度为一个字节(0,255)，这意味着指令集的操作码总数不可能超过 256 条。
 
 ### 执行模型
 
@@ -41,19 +41,15 @@ if(字节码存在操作数)从字节码流中取出操作数；
 
 对于大部分与数据类型相关的字节码指令，它们的操作码助记符中都有特殊的字符来表明专门为哪种数据类型服务：
 
-- i 代表对 int 类型的数据操作
-
-- l 代表 long
-
-- s 代表 short
-
-- b 代表 byte
-
-- c 代表 char
-
-- f 代表 float
-
-- d 代表 double
+| 数据类型   | 特殊助记字符 |
+|--------|--------|
+| int    | i      |
+| long   | l      |
+| short  | s      |
+| byte   | b      |
+| char   | c      |
+| float  | f      |
+| double | d      |
 
 也有一些指令的助记符中没有明确地指明操作类型的字母， 如 `arraylength` 指令，它没有代表数据类型的特殊字符，但操作数永远只能是一个数组类型的对象。
 
@@ -83,11 +79,35 @@ if(字节码存在操作数)从字节码流中取出操作数；
 
 - 同步控制指令
 
-(说在前面)在做值相关操作时。
+(说在前面)在做值相关操作时：
 
 - 一个指令，可以从局部变量表、常量池、堆中对象、方法调用、系统调用中等取得数据，这些数据（可能是值可能是对象的引用）被压入操作数栈。
 
 - 一个指令，也可以从操作数栈中取出一到多个值（pop多次），完成赋值、加减乘除、方法传参、系统调用等等操作。
+
+**Java 虚拟机支持的指令集**
+
+![instruction-set.png|inline](https://s2.loli.net/2023/03/16/z1WMFBGytA5jaix.png)
+
+**Java 虚拟机实际类型和 Java 虚拟机计算类型之间的映射**
+
+| 实际数据类型  | 计算类型      | 分类 |
+| ------------- | ------------- | ---- |
+| boolean       | int           | 1    |
+| byte          | int           | 1    |
+| char          | int           | 1    |
+| short         | int           | 1    |
+| int           | int           | 1    |
+| floa          | float         | 1    |
+| reference     | reference     | 1    |
+| returnAddress | returnAddress | 1    |
+| long          | long          | 2    |
+| double        | double        | 2    |
+
+Java 虚拟机规范定义了两种不同的分类：
+
+- Category 1：包括 boolean、byte、char、short、int、float 等 6 种基本类型。它们所需的字节长度都不超过 4 个字节。
+- Category 2：包括 long、double 等 2 种基本类型。它们所需的字节长度都超过 4 个字节。
 
 ## 加载与存储指令
 
@@ -307,19 +327,19 @@ PS：其中操作数栈为了展示方便直接叠加了上去，正常（例如
 
 ### 所有的算术指令
 
-| 算数指令   | 备注         | int(boolean,byte,char,short) | long | float         | double        |
-| ---------- | ------------ | ---------------------------- | ---- | ------------- | ------------- |
-| 加法指令   |              | iadd                         | ladd | fadd          | dadd          |
-| 减法指令   |              | isub                         | lsub | fsub          | dsub          |
-| 乘法指令   |              | imul                         | lmul | fmul          | dmul          |
-| 除法指令   |              | idiv                         | ldiv | fdiv          | ddiv          |
-| 求余指令   | remainder    | irem                         | lrem | frem          | drem          |
-| 取反指令   | negation     | ineg                         | lneg | fneg          | dneg          |
-| 自增指令   |              | iinc                         |      |               |               |
-| 位运算指令 | 按位或指令   | ior                          | lor  |               |               |
-|            | 按位与指令   | iand                         | land |               |               |
-|            | 按位异或指令 | ixor                         | lxor |               |               |
-| 比较指令   |              |                              | lcmp | fcmpg / fcmpl | dcmpg / dcmpl |
+| 算数指令  | 备注        | int(boolean,byte,char,short) | long | float         | double        |
+|-------|-----------|------------------------------|------|---------------|---------------|
+| 加法指令  |           | iadd                         | ladd | fadd          | dadd          |
+| 减法指令  |           | isub                         | lsub | fsub          | dsub          |
+| 乘法指令  |           | imul                         | lmul | fmul          | dmul          |
+| 除法指令  |           | idiv                         | ldiv | fdiv          | ddiv          |
+| 求余指令  | remainder | irem                         | lrem | frem          | drem          |
+| 取反指令  | negation  | ineg                         | lneg | fneg          | dneg          |
+| 自增指令  |           | iinc                         |      |               |               |
+| 位运算指令 | 按位或指令     | ior                          | lor  |               |               |
+|       | 按位与指令     | iand                         | land |               |               |
+|       | 按位异或指令    | ixor                         | lxor |               |               |
+| 比较指令  |           |                              | lcmp | fcmpg / fcmpl | dcmpg / dcmpl |
 
 **示例一**
 
@@ -369,15 +389,461 @@ public static void main(String[] args) {
 
 ### 比较指令说明
 
-比较指令的作用是比较栈顶两个元素的大小，并将比较结果入栈。比较指令有:dcmpg、dcmpl、fcmpg、fcmpl、lcmp，与前面讲解的指令类似，首字符 d 表示 double 类型，f 表示 float，l 表示 long
+比较指令的作用是比较栈顶两个元素的大小，并将比较结果入栈。
 
+比较指令有：`dcmpg`、`dcmpl`、`fcmpg`、`fcmpl`、`lcmp`，与前面讲解的指令类似，首字符 d 表示 double 类型，f 表示 float，l 表示 long。其中 double 类型 和 float 类型的指令都有两套，这是因为浮点型的数据需要处理 NaN 值的情况。long 类型的无需处理 NaN 值所以只需要一套指令就行。
 
+由于只有数值类型的数据才需要比较大小，所以像 boolean、引用数据类型都没有对应的指令。byte、char、short、int 类型的比较都使用 `lcmp` 指令。
+
+**double 类型与 float 类型的比较指令**
+
+对于 double 和 float 类型的数字，由于 NaN 的存在，各有两个版本的比较指令。
+
+以 float 为例，有 `fcmpg`和 `fcmpl` 两个指令，指令 `fcmpg` 和`fcmpl` 都从栈中弹出两个操作数，并将它们做比较，设栈顶的元素为 v2，栈顶顺位第2位的元素为 v1，若 v1 = v2，则压入 0；若v1 > v2 则压入1；若 v1 < v2 则压入-1。
+
+它们的区别在于在数字比较时，若遇到 NaN 值，处理结果不同，如下：
+
+- 如果遇到 NaN 值，`fcmpg` 会压入 1
+- 如果遇到 NaN 值，`fcmpl` 会压入 -1
+
+`dcmpg` 和 `dcmpl` 指令的处理结果和上面的类似。
 
 ## 类型转换指令
 
+**说明**
+类型转换指令可以将两种不同的数值类型进行相互转换。这些转换操作一般用于实现用户代码中的显式类型转换操作，或者用来处理字节码指令集中数据类型相关指令无法与数据类型一一对应的问题。
+
+### 宽化类型转换
+
+**转换规则**
+
+Java 虚拟机直接支持以下数值的宽化类型转换（widening numeric conversion，小范围类型向大范围类型的安全转换）。也就是说，并不需要指令执行，包括：
+
+- int 类型转换成 long、float 或者 double 类型。对应的指令为：`i21`、`i2f`、`i2d`
+- long 类型转换成 float、double 类型。对应的指令为：`l2f`、`l2d`
+- float 类型转换成 double 类型。对应的指令为：`f2d`
+
+**精度损失问题**
+
+宽化类型转换是不会因为超过目标类型最大值而丢失信息的。例如，从 int 转换到 long。或者从 int 转换到 double，都不会丢失任何信息，转换前后的值是精确相等的。
+
+但是从 int、long 类型数值转换到 float ，或者 long 类型数值转换到 double 时，将可能发生精度丢失，即可能丢失掉几个最低有效位上的值，转换后的浮点数值是根据 IEEE754 最接近舍入模式所得到的正确整数值。
+
+尽管宽化类型转换实际上是可能发生精度丢失的，但是这种转换永远不会导致 Java 虚拟机抛出运行时异常。
+
+**补充说明**
+
+从 byte、char 和 short 类型到 int 类型的宽化类型转换实际上是不存在的。对于 byte 类型转为 int，虚拟机并没有做实质性的转化处理，只是简单地通过操作数栈交換了两个数据。而将 byte 转为 long 时，使用的是 `i2l` ，可以看到在内部，byte 在这里已经等同于 int 类型处理，类似的还有 short 类型，这种处理方式有两个特点：
+
+- 一方面可以减少实际的数据类型，如果为 char、 short 和 byte 都准备一套指令，那么指令的数量就会大増，而虚拟机目前的设计上，只愿意使用一个字节表示指令，因此指令总数不能超过 256 个，为了节省指令资源，将 char、short 和 byte 当做 int 处理也在情理之中。
+- 另一方面，由于 byte、char 、 short、int 类型在局部变量表中都使用一个 Slot，无论是 byte 、char 或者 short 存入局部变量表都会占用一个 Slot 和 int 类型是一样的，从这个角度说，也没有必要特意区分这几种数据类型。
+
+### 窄化类型转换
+
+ **转换规则**
+
+Java 虚拟机也直接支持以下窄化类型转换：
+
+-  int 类型转换成 byte、 short 或者 char 类型。对应的指令有：`i2b`、`i2c`、`i2s` 
+
+-  long 类型转换成 int 类型。对应的指令有：`l2i `
+
+-  float 类型转换成 int 或者 long 类型。对应的指令有：`f2i`、`f2l`
+
+-  double 类型转换成 int、long 或者 float 类型。对应的指令有：`d2i`、`d2l`、`d2f`
+
+**精度损失问题**
+
+窄化类型转换可能会导致转换结果具备不同的正负号、不同的数量级，因此，转换过程很可能会导致数值丢失精度。
+
+尽管数据类型窄化转换可能会发生上限溢出、下限溢出和精度丢失等情况，但是 Java 虚拟机规范中明确规定数值类型的窄化转换指令永远不可能导致虚拟机抛出运行时异常。
+
+**补充说明**
+
+当将一个浮点值窄化转换为整数类型 T（ T 限于 int 或 long 类型之一）的时候，将遵循以下转换规则：
+
+-  如果浮点值是 NaN ，那转换结果就是 int 或 long 类型的 0。
+
+-  如果浮点值不是无穷大的话，浮点值使用 IEEE754 的向零含入模式取整，获得整数值 v。如果 v 在目标类型 T（int 或 long）的表示范围之内，那转换结果就是 v。否则，将根据 v 的符号，转换为 T 所能表示的最大或者最小整数。 
+
+当将一个 double 类型窄化转换为 float 类型时，将遵循以下转换规则，通过向最接近数舍入模式舍入一个可以使用 float 类型表示的数字。最后结果根据下面这3条规则判断：
+
+-  如果转换结果的绝对值太小而无法使用 float 来表示，将返回 float 类型的正负零 。
+
+-  如果转换结果的绝对值太大而无法使用 float 来表示，将返回 float 类型的正负无穷大。 
+
+-  对于 double 类型的 NaN 值将按规定转换为 float 类型的 NaN 值。 
+
+
+
 ## 对象的创建与访问指令
 
+Java 是面向对象的程序设计语言，虚拟机平台从字节码层面就对面向对象做了深层次的支持。有一系列指令专门用于对象操作，可进一步细分为创建指令、字段访问指令、数组操作指令、类型检查指令。
+
+### 创建指令
+
+| 指令操作码     | 含义             |
+| :------------- | :--------------- |
+| new            | 创建类实例       |
+| newarray       | 创建基本类型数组 |
+| anewarray      | 创建引用类型数组 |
+| multilanewarra | 创建多维数组     |
+
+虽然类实例和数组都是对象，但 Java 虚拟机对类实例和数组的创建与操作使用了不同的字节码指令。
+
+
+
+**创建类实例的指令** 
+
+创建类实例的指令：`new`，它接收一个操作数，为指向常量池的索引，表示要创建的类型，执行完成后，将对象的引用压入操作数栈。
+
+ **代码示例**
+
+``` java
+	public void testNew() {
+		Object o = new Object();
+	}
+```
+
+**字节码指令**
+
+``` java
+0 new #2 <java/lang/Object>
+3 dup
+4 invokespecial #1 <java/lang/Object.<init> : ()V>
+7 astore_1
+8 return
+```
+
+- 通过 `new` 指令通过符号引用指向的类的全限定名称，在堆空间中开辟一块内存空间，返回该内存空间的起始地址并压入操作数栈中。
+
+- `dup` 指令是复制当前栈顶的数据并压入操作数栈。然后执行 Object 类的 \<init\>() 方法（会把 `dup` 指令复制的应用地址弹出栈）。接着将执行 `new ` 指令产生的应用地址弹出，存储到局部变量表索引为 1 的 Slot 。最后方法返回，整个方法对应的栈帧弹出。
+
+  
+
+**创建数组的指令**
+
+创建数组的指令：`newarray`、`anewarray`、`multianewarray` 。
+
+- `newarray` 用于创建一个新的基本类型数组（即 boolean、byte、char、short、int、long、float 或 double 数组）。该指令需要一个整数参数，来指定要创建的数组的长度。在执行 `newarray` 指令时，JVM 会从操作数栈中弹出长度值，并将其作为参数传递给该指令。`newarray` 还有一个操作数 atype 是一个代表着要生成什么基本类型的数组，下面是对应的表格：
+
+| 数组类型  | atype |
+| --------- | ----- |
+| T_BOOLEAN | 4     |
+| T_CHAR    | 5     |
+| T_FLOAT   | 6     |
+| T_DOUBLE  | 7     |
+| T_BYTE    | 8     |
+| T_SHORT   | 9     |
+| T_INT     | 10    |
+| T_LONG    | 11    |
+
+-  `anewarray` 用于创建一个包含引用类型元素的新数组。它需要两个参数：第一个参数是类描述符，表示要创建的数组中元素的类型；第二个参数是数组大小，即要创建的数组中元素的数量。在执行 `anewarray` 指令时，JVM 会从操作数栈中弹出长度值，并将其作为参数传递给该指令。
+
+- `multianewarray` 用于创建多维数组对象。它需要两个操作数，第一个操作数是对常量池中的一个 符号引用，用于表示所需创建的多维数组的元素类型；第二个操作数则是一个无符号的整数，表示需要创建的多维数组的维度数。
+
+**代码示例**
+
+``` java
+	public void testNewArray() {
+
+		// 测试创建基本数据类型的数组
+		int[] intArr = new int[10];
+
+		// 测试创建引用类型的数组
+		String[] strArr = new String[20];
+
+		// 创建多维数组
+		String[][] strArr2 = new String[30][];
+		double[][] doubleArr = new double[40][15];
+		long[][] longArr = new long[50][];
+
+	}
+```
+
+**字节码指令**
+
+``` java
+ 0 bipush 10
+ 2 newarray 10 (int)
+ 4 astore_1
+ 5 bipush 20
+ 7 anewarray #15 <java/lang/String>
+10 astore_2
+11 bipush 30
+13 anewarray #17 <[Ljava/lang/String;>
+16 astore_3
+17 bipush 40
+19 bipush 15
+21 multianewarray #19 <[[D> dim 2
+25 astore 4
+27 bipush 50
+29 anewarray #21 <[J>
+32 astore 5
+34 return
+```
+
+- index 2 的字节码：`newarray 10 ` 表达的意思就是这将创建一个 int 类型的数组，数组的长度为 10（`bipush 10` 压入操作数栈的）。
+- index 7 的字节码：`anewarray #15` 表达的意思是这将创建一个 String 类型的数组，数组的长度为 20（`bipush 20` 压入操作数栈的）。
+- index 13 的字节码：`anewarray #17` 表达的意思是这将创建一个 String 类型的二维数组，数组的长度为 30（`bipush 30` 压入操作数栈的）。由于第二维的长度没有传入，所以这边使用的还是 `anewarray` 指令。
+- index 21 的字节码：` multianewarray #19 <[[D> dim 2` 表达的意思是这将创建一个 double 类型的二维数组，2 指的是数组的维度。
+- index 29 的字节码：`anewarray #21 `表达的意思是这将创建一个 long 类型的二维数组，数组的长度为 50（`bipush 50` 压入操作数栈的）。由于第二维的长度没有传入，所以这边使用的还是 `anewarray` 指令，而且虽然这边创建的是基本数据类型的二维数组，但是由于存储的其实是 long 数组的引用地址，所以使用到的指令还是 `anewarray`
+
+
+
+### 字段访问指令
+
+对象创建后，就可以通过对象访问指令获取对象实例或数组实例中的字段或者数组元素。
+
+| 指令操作码           | 含义                                                   |
+| -------------------- | ------------------------------------------------------ |
+| getstatic、putstatic | 访问类字段（static字段，或者称为类变量）的指令         |
+| getfield、 putfield  | 访问类实例字段（非static字段，或者称为实例变量）的指令 |
+
+举例：以 `getstatic` 指令为例，它含有一个操作数，为指向常量池的 Fieldref 索引，它的作用就是获取 Fieldref 指定的对象或者值，并将其压入操作数栈。
+
+**代码示例**
+
+``` java
+public void sayHello() {
+    System.out.println("hel1o"); 
+}
+```
+
+**字节码指令**
+
+``` java
+0 getstatic #8 <java/lang/System.out>
+3 ldc #9 <hello>
+5 invokevirtual #10 <java/io/PrintStream.println>
+8 return
+```
+
+**示意图**
+![getstatic-1.png|inline](https://s2.loli.net/2023/03/16/rajmH4wCG8BlThq.png)
+
+**代码示例二**
+
+``` java
+public class FieldTest {
+
+	class FieldInner {
+		static int field1;
+		String field2;
+	}
+
+	public void testGet() {
+		FieldInner fieldInner = new FieldInner();
+		String field2 = fieldInner.field2;
+		int field1 = FieldInner.field1;
+	}
+
+	public void testSet() {
+		FieldInner fieldInner = new FieldInner();
+		fieldInner.field2 = "Suwian";
+		FieldInner.field1 = 26;
+		System.out.println(fieldInner);
+	}
+
+}
+```
+
+**testGet() 方法字节码指令**
+
+``` java
+ 0 new #7 <com/fgi/test/FieldTest$FieldInner>
+ 3 dup
+ 4 aload_0
+ 5 invokespecial #9 <com/fgi/test/FieldTest$FieldInner.<init> : (Lcom/fgi/test/FieldTest;)V>
+ 8 astore_1
+ 9 aload_1
+10 getfield #12 <com/fgi/test/FieldTest$FieldInner.field2 : Ljava/lang/String;>
+13 astore_2
+14 getstatic #16 <com/fgi/test/FieldTest$FieldInner.field1 : I>
+17 istore_3
+18 return
+```
+
+- index 为 9 的字节码指令先将前面 `new` 生成的对象引用从局部变量表加载到操作数栈，然后 `getfield #12` 会将对象引用弹出栈，获取到对应的字段内容后将结果压入操作数栈
+- index 为 14 的字节码 `getstatic #16` 由于获取的是类变量，所以不需要将对象引用压入操作数栈，而是直接通过类获取。
+
+
+
+**testSet() 方法字节码指令**
+
+``` java
+ 0 new #7 <com/fgi/test/FieldTest$FieldInner>
+ 3 dup
+ 4 aload_0
+ 5 invokespecial #9 <com/fgi/test/FieldTest$FieldInner.<init> : (Lcom/fgi/test/FieldTest;)V>
+ 8 astore_1
+ 9 aload_1
+10 ldc #20 <Suwian>
+12 putfield #12 <com/fgi/test/FieldTest$FieldInner.field2 : Ljava/lang/String;>
+15 bipush 26
+17 putstatic #16 <com/fgi/test/FieldTest$FieldInner.field1 : I>
+20 getstatic #22 <java/lang/System.out : Ljava/io/PrintStream;>
+23 aload_1
+24 invokevirtual #28 <java/io/PrintStream.println : (Ljava/lang/Object;)V>
+27 return
+```
+
+- index 为 12 的字节码 `putfield #12` 将上一条指令压入操作数栈的字符串 “Suwian”和从局部变量表加载过来的对象引用弹出操作数栈，并且存储到对象符号引用所指向的字段里面。
+- index 为 17 的字节码 `putstatic #16` 将上一条指令压入操作数栈的 26 弹出操作数栈，并且存储到类符号引用所指向的字段里面。由于是类变量，所以不需要对象。
+
+### 数组操作指令
+
+数组操作指令主要有：xastore 和 xaload 指令（x 为具体类型）。具体为：
+
+- 把一个数组元素加载到操作数栈的指令：`baload`、`caload`、`saload`、`iaload`、`laload`、`faload`、`daload`、`aaload`
+
+- 将一个操作数栈的值存储到数组元素中的指令：`bastore`、`castore`、`sastore`、`iastore`、`lastore`、`fastore`、`dastore`、`aastor`
+
+具体如下表：
+
+| 数组指令    | byte(boolean) | char    | short   | int     | long    | float   | double  | reference |
+| ----------- | ------------- | ------- | ------- | ------- | ------- | ------- | ------- | --------- |
+| **xaload**  | baload        | caload  | saload  | iaload  | laload  | faload  | daload  | aaload    |
+| **xastore** | bastore       | castore | sastore | iastore | lastore | fastore | dastore | aastore   |
+
+取数组长度的指令：`arraylength`，该指令弹出栈顶的数组元素，获取数组的长度，将长度压入栈。
+
+**使用说明**
+
+指令 `xaload` 表示将数组的元素压栈，比如 `saload`、`caload`分别表示压入 short 数组和 char 数组。指令 `xaload` 在执行时，要求操作数中栈顶元素为数组索引 i，栈顶顺位第2个元素为数组引用 a，该指令会弹出栈顶这两个元素，并将 a[i] 重新压入栈。
+
+`xastore` 则专门针对数组操作，以 `iastore` 为例，它用于给一个 int 数组的给定索引赋值。在 `iastore` 执行前，操作数栈顶需要为此准备3个元素：值、索引、数组引用，`iastore` 会弹出这 3 个值，并将值赋给数组中指定索引的位置。
+
+**代码示例**
+
+``` java
+public class ArrayTest {
+
+	/**
+	 * 测试 xaload 指令
+	 */
+	public void testLoad() {
+		int[] ints = new int[3];
+		System.out.println(ints[2]);
+	}
+
+	/**
+	 * 测试 xastore 指令
+	 */
+	public void testStore() {
+		int[] ints = new int[3];
+		ints[1] = 100;
+		System.out.println(ints[2]);
+	}
+
+}
+```
+
+**testLoad() 方法字节码指令**
+
+``` java
+ 0 iconst_3
+ 1 newarray 10 (int)
+ 3 astore_1
+ 4 getstatic #7 <java/lang/System.out : Ljava/io/PrintStream;>
+ 7 aload_1
+ 8 iconst_2
+ 9 iaload
+10 invokevirtual #13 <java/io/PrintStream.println : (I)V>
+13 return
+```
+
+- index 为 9 的字节码 `iaload` 指令的执行将数组的引用地址和索引弹出操作数栈，获取到存储在里面实际的值再压入操作数栈中。
+
+**testStore() 方法字节码指令**
+
+``` java
+ 0 iconst_3
+ 1 newarray 10 (int)
+ 3 astore_1
+ 4 aload_1
+ 5 iconst_1
+ 6 bipush 100
+ 8 iastore
+ 9 getstatic #7 <java/lang/System.out : Ljava/io/PrintStream;>
+12 aload_1
+13 iconst_2
+14 iaload
+15 invokevirtual #13 <java/io/PrintStream.println : (I)V>
+18 return
+
+```
+
+- index 为 8 的字节码 `iastore` 指令的执行将数组的引用地址和索引以及要存储的值弹出操作数栈，将数据存储在对应的位置。
+
+### 类型检查指令
+
+检查类实例或数组类型的指令：`instanceof`、`checkcast`。
+
+- 指令 `instanceof` 用来判断给定对象是否是某一个类的实例，它会将判断结果压入操作数栈。
+- 指令 `checkcast` 用于检查类型强制转换是否可以进行。如果可以进行，那么 `checkcast` 指令不会改变操作数栈，并在运行时进行明确的类型转换。否则它会抛出ClassCastException 异常。
+
+| 类型检查指令 | 含义                             |
+| ------------ | -------------------------------- |
+| instanceof   | 判断给定对象是否是某一个类的实例 |
+| checkcast    | 检查类型强制转换是否可以进行     |
+
+**代码示例**
+
+``` java
+public class ClassCastTest {
+
+	public void testClassCast(Object obj) {
+		boolean b = obj instanceof String;
+		String str = (String) obj;
+	}
+}
+```
+
+**字节码指令**
+
+``` java
+ 0 aload_1
+ 1 instanceof #7 <java/lang/String>
+ 4 istore_2
+ 5 aload_1
+ 6 checkcast #7 <java/lang/String>
+ 9 astore_3
+10 return
+```
+
+- index 为 1 的字节码 `instanceof #7` 会将当前栈顶的元素弹出，并且判断对象是否为某个类的实例：
+  - 如果对象引用为 null，则将0（表示 false）推入栈顶。
+  - 否则，该指令会检查该对象引用所指向的对象是否是指定类的实例。如果是，就将1（表示 true）推入栈顶；否则将0（表示 false）推入栈顶。
+- index 为 6 的字节码 `checkcast #7` 接收一个引用类型值，并将其转换为一个指定的引用类型。如果这个值不是指定类型的一个实例，那么将抛出一个 ClassCastException 异常。
+
+
+
 ## 方法调用与返回指令
+
+### 方法调用指令
+
+- `invokevirtual` 指令用于调用对象的实例方法，根据对象的实际类型进行分派（虚方法分派），支持多态。这也是Java语言中最常见的方法分派方式。
+
+- `invokeinterface` 指令用于调用接口方法，它会在运行时搜索由特定对象所实现的这个接口方法，并找出适合的方法进行调用。
+
+- `invokespecial` 指令用于调用一些需要特殊处理的实例方法，包括实例初始化方法（构造器）、私有方法和父类方法。这些方法都是静态类型绑定的，不会在调用时进行动态派发。
+
+- `invokestatic` 指令用于调用命名类中的类方法（static方法）。这是静态绑定的。
+
+- `invokedynamic` 指令用于调用动态绑定的方法，这个是 JDK1.7 后新加入的指令。用于在运行时动态解析出调用点限定符所引用的方法，并执行该方法。`invokedynamic` 指令的分派逻辑是由用户所设定的引导方法决定的，而前面4条调用指令的分派逻辑都固化在java虚拟机内部。
+
+| 字节码指令      | 含义                                                         |
+| --------------- | ------------------------------------------------------------ |
+| invokevirtual   | 调用对象的实例方法                                           |
+| invokeinterface | 调用接口方法                                                 |
+| invokespecial   | 调用一些需要特殊处理的实例方法，包括实例初始化方法（构造器）、私有方法和父类方法 |
+| invokestatic    | 调用命名类中的类方法（static方法）                           |
+| invokedynamic   | 调用动态绑定的方法                                           |
+
+### 方法返回指令
+
+
 
 ## 操作数栈管理指令
 
