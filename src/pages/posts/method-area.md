@@ -1,0 +1,1287 @@
+---
+layout: '../../layouts/MarkdownPost.astro'
+title: 'JVM虚拟机之方法区'
+pubDate: 2023-02-15
+description: '方法区可以看作是一块独立于 Java 堆的内存空间'
+author: 'Suwian'
+cover:
+    url: 'https://s2.loli.net/2023/03/17/rbLcfeFRUpk3E6y.png'
+    square: 'https://s2.loli.net/2023/03/17/rbLcfeFRUpk3E6y.png'
+    alt: 'cover'
+tags: ["JVM"]
+theme: 'light'
+featured: true
+---
+
+栈、堆、方法区的交互关系
+--------------
+**从线程共享与否的角度来看**
+
+ThreadLocal：如何保证多个线程在并发环境下的安全性？典型场景就是数据库连接管理，以及会话管理。
+
+![0001.png](https://s2.loli.net/2023/03/17/omFnOiPhrq3Hpd5.png)
+**栈、堆、方法区的交互关系**
+
+**下面涉及了对象的访问定位**
+
+1.  Person 类的 .class 信息存放在方法区中。
+2.  person 变量存放在 Java 虚拟机栈的局部变量表中。
+3.  真正的 person 对象存放在 Java 堆中。
+4.  在 person 对象中，有个指针指向方法区中的 person 类型数据，表明这个 person 对象是用方法区中的 Person 类 new 出来的。
+
+![0002.png](https://s2.loli.net/2023/03/17/MbnUBCP9W42HNti.png)
+
+方法区的理解
+--------
+
+> **官方文档**：https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-2.html#jvms-2.5.4
+
+### 方法区在哪里？
+
+《Java虚拟机规范》中明确说明：尽管所有的方法区在逻辑上是属于堆的一部分，但一些简单的实现可能不会选择去进行垃圾收集或者进行压缩。但对于HotSpot JVM 而言，方法区还有一个别名叫做 Non-Heap（非堆），目的就是要和堆分开。
+
+所以，**方法区可以看作是一块独立于 Java 堆的内存空间**。
+
+![0003.png](https://s2.loli.net/2023/03/17/9j6BW7nEsPdhI32.png)
+
+
+
+### 方法区的基本理解
+
+**方法区主要存放的是 Class，而堆中主要存放的是实例化的对象**
+
+- 方法区（Method Area）与 Java 堆一样，是各个线程共享的内存区域。多个线程同时加载统一个类时，只能有一个线程能加载该类，其他线程只能等等待该线程加载完毕，然后直接使用该类，即类只能加载一次。
+
+- 方法区在 JVM 启动的时候被创建，并且它的实际的物理内存空间中和 Java 堆区一样都可以是不连续的。
+
+- 方法区的大小，跟堆空间一样，可以选择固定大小或者可扩展。
+
+- 方法区的大小决定了系统可以保存多少个类，如果系统定义了太多的类（加载大量的第三方的jar包；大量动态的生成反射类；Tomcat部署的工程过多（30~50个）），导致方法区溢出，虚拟机同样会抛出内存溢出错误：
+  - `java.lang.OutofMemoryError:PermGen space`：永久代，Java 7 以及之前方法区在 HotSpot 的落地实现。
+  - `java.lang.OutOfMemoryError:Metaspace`：元空间，Java 8 起方法区在 HotSpot 的落地实现。
+
+- 关闭 JVM 就会释放这个区域的内存。
+
+
+
+**代码举例**
+
+```java
+public class MethodAreaDemo {
+    public static void main(String[] args) {
+        System.out.println("start...");
+        try {
+            Thread.sleep(1000000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("end...");
+    }
+}
+```
+
+
+
+简单的程序，加载了1600多个类
+
+![0004.png](https://s2.loli.net/2023/03/17/UonQayqDtMVY7Tu.png)
+
+
+
+### HotSpot方法区演进
+
+1.  在  Java 7 及以前，习惯上把方法区称为永久代。Java 8 开始，使用元空间取代了永久代。我们可以将方法区类比为 Java 中的接口，将永久代或元空间类比为Java 中具体的实现类。
+2.  本质上方法区和永久代并不等价。仅是对 HotSpot JVM 而言的可以看作等价。《Java虚拟机规范》对如何实现方法区，不做统一要求。例如：BEA JRockit / IBM J9 中不存在永久代的概念。现在来看，当年使用永久代，不是好的主意。导致 Java 程序更容易 OOM（超过`-XX:MaxPermsize`上限）。
+3.  而到了Java 8，终于完全废弃了永久代的概念，改用与 JRockit、J9 一样在本地内存中实现的元空间（Metaspace）来代替。
+4.  元空间的本质和永久代类似，都是对 JVM 规范中方法区的实现。不过元空间与永久代最大的区别在于：**元空间不在虚拟机设置的内存中，而是使用本地内存**。
+5.  永久代、元空间二者并不只是名字变了，内部结构也调整了。
+6.  根据《Java虚拟机规范》的规定，如果方法区无法满足新的内存分配需求时，将抛出 OOM 异常
+
+![0005.png](https://s2.loli.net/2023/03/17/WjGcikhR8ofAnrZ.png)
+
+
+
+设置方法区大小与 OOM
+--------------
+
+方法区的大小不必是固定的，JVM 可以根据应用的需要动态调整。
+
+### Java 7 及以前(永久代)
+
+1.  `-XX:Permsize`：设置永久代初始分配空间。默认值是 20.75M
+2.  `-XX:MaxPermsize`：设置永久代最大可分配空间。32 位机器默认是 64M，64 位机器模式是 82M。
+
+当 JVM 加载的类信息容量超过了这个值，会报异常： `java.lang.OutofMemoryError:PermGen space`。
+
+![0006.png](https://s2.loli.net/2023/03/17/MLHXOlRm8UiZKQs.png)
+
+### Java 8 及以后(元空间)
+
+1.  元数据区大小可以使用参数 `-XX:MetaspaceSize` `-XX:MaxMetaspaceSize` 指定。默认值依赖于平台，Windows 下，`-XX:MetaspaceSize` 约为21M，`-XX:MaxMetaspaceSize` 的值是-1，即没有限制。
+2.  与永久代不同，如果不指定大小，默认情况下，虚拟机会耗尽所有的可用系统内存。如果元数据区发生溢出，虚拟机一样会抛出异常：`java.lang.OutOfMemoryError:Metaspace`。
+4.  `-XX:MetaspaceSize`：设置初始的元空间大小。对于一个 64位 的服务器端 JVM 来说，其默认的 `-XX:MetaspaceSize`值为21MB。这就是初始的高水位线，一旦触及这个水位线，Full GC 将会被触发并卸载没用的类（即这些类对应的类加载器不再存活），然后这个高水位线将会重置。新的高水位线的值取决于 GC后释放了多少元空间。如果释放的空间不足，那么在不超过 MaxMetaspaceSize 时，适当提高该值。如果释放空间过多，则适当降低该值。
+5.  如果初始化的高水位线设置过低，上述高水位线调整情况会发生很多次。通过垃圾回收器的日志可以观察到 Full GC 多次调用。为了避免频繁地 GC，建议将-`XX:MetaspaceSize` 设置为一个相对较高的值。
+
+
+
+
+### 方法区OOM
+
+**代码示例**
+
+OOMTest 类继承 ClassLoader 类，获得 defineClass() 方法，可自己进行类的加载
+
+```java
+/**
+ * jdk6/7中：
+ * -XX:PermSize=10m -XX:MaxPermSize=10m
+ *
+ * jdk8中：
+ * -XX:MetaspaceSize=10m -XX:MaxMetaspaceSize=10m
+ *
+ */
+public class OOMTest extends ClassLoader {
+    public static void main(String[] args) {
+        int j = 0;
+        try {
+            OOMTest test = new OOMTest();
+            for (int i = 0; i < 10000; i++) {
+                //创建ClassWriter对象，用于生成类的二进制字节码
+                ClassWriter classWriter = new ClassWriter(0);
+                //指明版本号，修饰符，类名，包名，父类，接口
+                classWriter.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "Class" + i, null, "java/lang/Object", null);
+                //返回byte[]
+                byte[] code = classWriter.toByteArray();
+                //类的加载
+                test.defineClass("Class" + i, code, 0, code.length);//Class对象
+                j++;
+            }
+        } finally {
+            System.out.println(j);
+        }
+    }
+}
+
+```
+
+
+
+**不设置元空间的上限**
+
+使用默认的 JVM 参数，元空间不设置上限
+
+输出结果：
+
+```java
+10000
+```
+
+
+
+**设置元空间的上限**
+
+JVM 参数：`-XX:MetaspaceSize=10m -XX:MaxMetaspaceSize=10m`
+
+输出结果：
+
+```java
+8531
+Exception in thread "main" java.lang.OutOfMemoryError: Metaspace
+	at java.lang.ClassLoader.defineClass1(Native Method)
+	at java.lang.ClassLoader.defineClass(ClassLoader.java:763)
+	at java.lang.ClassLoader.defineClass(ClassLoader.java:642)
+	at com.atguigu.java.OOMTest.main(OOMTest.java:29)
+```
+
+
+
+### 如何解决OOM
+
+1.  要解决 OOM 异常或 heap space 的异常，一般的手段是首先通过内存映像分析工具（如 Eclipse Memory Analyzer）对 dump 出来的堆转储快照进行分析，重点是确认内存中的对象是否是必要的，也就是要先分清楚到底是出现了内存泄漏（Memory Leak）还是内存溢出（Memory Overflow）。
+2.  **内存泄漏**就是有大量的引用指向某些对象，但是这些对象以后不会使用了，但是因为它们还和 GC ROOTS 有关联，所以导致以后这些对象也不会被回收，这就是内存泄漏的问题。
+    - 如果是内存泄漏，可进一步通过工具查看泄漏对象到 GC Roots 的引用链。于是就能找到泄漏对象是通过怎样的路径与 GC Roots 相关联并导致垃圾收集器无法自动回收它们的。掌握了泄漏对象的类型信息，以及 GC Roots 引用链的信息，就可以比较准确地定位出泄漏代码的位置。
+    - 如果不存在内存泄漏，换句话说就是内存中的对象确实都还必须存活着，那就应当检查虚拟机的堆参数（ `-Xmx` 与 `-Xms` ），与机器物理内存对比看是否还可以调大，从代码上检查是否存在某些对象生命周期过长、持有状态时间过长的情况，尝试减少程序运行期的内存消耗。
+
+
+
+方法区的内部结构
+----------
+
+#### 概念
+
+JVM 的方法区（Method Area）主要用于存储已加载的类信息、常量、静态变量、即时编译器编译后的代码等数据。通常情况下，这些数据是在类加载时被加载到方法区中，同时也会在运行期间动态生成一些其他类型的数据放入方法区。
+
+具体来说，方法区主要包括以下内容：
+
+1. 类型信息：方法区保存了已经加载的类的完整信息，包括类名、父类名、接口名、字段、方法等信息。
+2. 运行时常量池：每个类都有自己的常量池，其中保存着该类所使用的常量，如字符串、数字、方法和字段引用等。
+3. 静态变量：所有类共享的一些静态变量，它们被存储在方法区中，并且只会被初始化一次。
+4. 即时编译器编译后的代码：当某个方法被多次调用并达到一定阈值时，该方法就会被编译成本地机器码并存储在方法区中，以提高其执行效率。
+
+需要注意的是，虽然方法区属于堆内存的一部分，但它与 Java 堆的区别还是比较大的。Java 堆主要用于存储对象实例，而方法区则主要用于存储类相关的信息，两者的作用不同，因此在 JVM 内部也是分别管理的。
+
+![0007.png](https://s2.loli.net/2023/03/17/3zYkKZ8asTMwmdi.png)
+
+《深入理解Java虚拟机》书中对方法区（Method Area）存储内容描述如下：它用于存储已被虚拟机加载的**类型信息、常量、静态变量、即时编译器编译后的代码缓存**等。
+
+![0008.png](https://s2.loli.net/2023/03/17/vjpUANIYnTH64Zm.png)
+
+
+
+**类型信息**
+
+对每个加载的类型（类 class、接口 interface、枚举 enum、注解 annotation），JVM 必须在方法区中存储以下类型信息：
+
+1.  这个类型的完整有效名称（全名=包名.类名）。
+2.  这个类型直接父类的完整有效名（对于 interface 或是 java.lang.Object，都没有父类）。
+3.  这个类型的修饰符（public，abstract，final 的某个子集）。
+4.  这个类型直接接口的一个有序列表。
+
+**域（Field）信息**
+
+也就是我们常说的成员变量，域信息是比较官方的称呼。
+
+1.  JVM 必须在方法区中保存类型的所有域的相关信息以及域的声明顺序。
+  
+2.  域的相关信息包括：域名称，域类型，域修饰符（public，private，protected，static，final，volatile，transient 的某个子集）。
+
+
+**方法（Method）信息**
+
+JVM 必须保存所有方法的以下信息，同域信息一样包括声明顺序：
+
+1.  方法名称。
+2.  方法的返回类型（包括 void 返回类型），void 在 Java 中对应的为 void.class。
+3.  方法参数的数量和类型（按顺序）。
+4.  方法的修饰符（public，private，protected，static，final，synchronized，native，abstract 的一个子集）。
+5.  方法的字节码（bytecodes）、操作数栈、局部变量表及大小（abstract 和 native 方法除外）。
+6.  异常表（abstract 和 native 方法除外），异常表记录每个异常处理的开始位置、结束位置、代码处理在程序计数器中的偏移地址、被捕获的异常类的常量池索引。
+
+
+
+#### 举例
+
+```java
+**
+ * 测试方法区的内部构成
+ */
+public class MethodInnerStrucTest extends Object implements Comparable<String>,Serializable {
+    // 成员变量
+    public int num = 10;
+    private static String str = "测试方法的内部结构";
+    //构造器
+    //方法
+    public void test1(){
+        int count = 20;
+        System.out.println("count = " + count);
+    }
+    public static int test2(int cal){
+        int result = 0;
+        try {
+            int value = 30;
+            result = value / cal;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public int compareTo(String o) {
+        return 0;
+    }
+}
+```
+
+反编译字节码文件，并输出值文本文件中，便于查看。参数 -p 确保能查看 private 权限类型的字段或方法：
+
+``` java
+javap -v -p MethodInnerStrucTest.class > test.txt
+```
+
+反编译出来的字节码如下：
+
+```java
+Classfile /F:/IDEAWorkSpaceSourceCode/JVMDemo/out/production/chapter09/com/atguigu/java/MethodInnerStrucTest.class
+  Last modified 2020-11-13; size 1626 bytes
+  MD5 checksum 0d0fcb54854d4ce183063df985141ad0
+  Compiled from "MethodInnerStrucTest.java"
+//类型信息      
+public class com.atguigu.java.MethodInnerStrucTest extends java.lang.Object implements java.lang.Comparable<java.lang.String>, java.io.Serializable
+  minor version: 0
+  major version: 52
+  flags: ACC_PUBLIC, ACC_SUPER
+Constant pool:
+   #1 = Methodref          #18.#52        // java/lang/Object."<init>":()V
+   #2 = Fieldref           #17.#53        // com/atguigu/java/MethodInnerStrucTest.num:I
+   #3 = Fieldref           #54.#55        // java/lang/System.out:Ljava/io/PrintStream;
+   #4 = Class              #56            // java/lang/StringBuilder
+   #5 = Methodref          #4.#52         // java/lang/StringBuilder."<init>":()V
+   #6 = String             #57            // count =
+   #7 = Methodref          #4.#58         // java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+   #8 = Methodref          #4.#59         // java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;
+   #9 = Methodref          #4.#60         // java/lang/StringBuilder.toString:()Ljava/lang/String;
+  #10 = Methodref          #61.#62        // java/io/PrintStream.println:(Ljava/lang/String;)V
+  #11 = Class              #63            // java/lang/Exception
+  #12 = Methodref          #11.#64        // java/lang/Exception.printStackTrace:()V
+  #13 = Class              #65            // java/lang/String
+  #14 = Methodref          #17.#66        // com/atguigu/java/MethodInnerStrucTest.compareTo:(Ljava/lang/String;)I
+  #15 = String             #67            // 测试方法的内部结构
+  #16 = Fieldref           #17.#68        // com/atguigu/java/MethodInnerStrucTest.str:Ljava/lang/String;
+  #17 = Class              #69            // com/atguigu/java/MethodInnerStrucTest
+  #18 = Class              #70            // java/lang/Object
+  #19 = Class              #71            // java/lang/Comparable
+  #20 = Class              #72            // java/io/Serializable
+  #21 = Utf8               num
+  #22 = Utf8               I
+  #23 = Utf8               str
+  #24 = Utf8               Ljava/lang/String;
+  #25 = Utf8               <init>
+  #26 = Utf8               ()V
+  #27 = Utf8               Code
+  #28 = Utf8               LineNumberTable
+  #29 = Utf8               LocalVariableTable
+  #30 = Utf8               this
+  #31 = Utf8               Lcom/atguigu/java/MethodInnerStrucTest;
+  #32 = Utf8               test1
+  #33 = Utf8               count
+  #34 = Utf8               test2
+  #35 = Utf8               (I)I
+  #36 = Utf8               value
+  #37 = Utf8               e
+  #38 = Utf8               Ljava/lang/Exception;
+  #39 = Utf8               cal
+  #40 = Utf8               result
+  #41 = Utf8               StackMapTable
+  #42 = Class              #63            // java/lang/Exception
+  #43 = Utf8               compareTo
+  #44 = Utf8               (Ljava/lang/String;)I
+  #45 = Utf8               o
+  #46 = Utf8               (Ljava/lang/Object;)I
+  #47 = Utf8               <clinit>
+  #48 = Utf8               Signature
+  #49 = Utf8               Ljava/lang/Object;Ljava/lang/Comparable<Ljava/lang/String;>;Ljava/io/Serializable;
+  #50 = Utf8               SourceFile
+  #51 = Utf8               MethodInnerStrucTest.java
+  #52 = NameAndType        #25:#26        // "<init>":()V
+  #53 = NameAndType        #21:#22        // num:I
+  #54 = Class              #73            // java/lang/System
+  #55 = NameAndType        #74:#75        // out:Ljava/io/PrintStream;
+  #56 = Utf8               java/lang/StringBuilder
+  #57 = Utf8               count =
+  #58 = NameAndType        #76:#77        // append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+  #59 = NameAndType        #76:#78        // append:(I)Ljava/lang/StringBuilder;
+  #60 = NameAndType        #79:#80        // toString:()Ljava/lang/String;
+  #61 = Class              #81            // java/io/PrintStream
+  #62 = NameAndType        #82:#83        // println:(Ljava/lang/String;)V
+  #63 = Utf8               java/lang/Exception
+  #64 = NameAndType        #84:#26        // printStackTrace:()V
+  #65 = Utf8               java/lang/String
+  #66 = NameAndType        #43:#44        // compareTo:(Ljava/lang/String;)I
+  #67 = Utf8               测试方法的内部结构
+  #68 = NameAndType        #23:#24        // str:Ljava/lang/String;
+  #69 = Utf8               com/atguigu/java/MethodInnerStrucTest
+  #70 = Utf8               java/lang/Object
+  #71 = Utf8               java/lang/Comparable
+  #72 = Utf8               java/io/Serializable
+  #73 = Utf8               java/lang/System
+  #74 = Utf8               out
+  #75 = Utf8               Ljava/io/PrintStream;
+  #76 = Utf8               append
+  #77 = Utf8               (Ljava/lang/String;)Ljava/lang/StringBuilder;
+  #78 = Utf8               (I)Ljava/lang/StringBuilder;
+  #79 = Utf8               toString
+  #80 = Utf8               ()Ljava/lang/String;
+  #81 = Utf8               java/io/PrintStream
+  #82 = Utf8               println
+  #83 = Utf8               (Ljava/lang/String;)V
+  #84 = Utf8               printStackTrace
+{
+//域信息
+  public int num;
+    descriptor: I
+    flags: ACC_PUBLIC
+
+  private static java.lang.String str;
+    descriptor: Ljava/lang/String;
+    flags: ACC_PRIVATE, ACC_STATIC
+
+  //方法信息
+  public com.atguigu.java.MethodInnerStrucTest();
+    descriptor: ()V
+    flags: ACC_PUBLIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: aload_0
+         5: bipush        10
+         7: putfield      #2                  // Field num:I
+        10: return
+      LineNumberTable:
+        line 10: 0
+        line 12: 4
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      11     0  this   Lcom/atguigu/java/MethodInnerStrucTest;
+
+  public void test1();
+    descriptor: ()V
+    flags: ACC_PUBLIC
+    Code:
+      stack=3, locals=2, args_size=1
+         0: bipush        20
+         2: istore_1
+         3: getstatic     #3                  // Field java/lang/System.out:Ljava/io/PrintStream;
+         6: new           #4                  // class java/lang/StringBuilder
+         9: dup
+        10: invokespecial #5                  // Method java/lang/StringBuilder."<init>":()V
+        13: ldc           #6                  // String count =
+        15: invokevirtual #7                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        18: iload_1
+        19: invokevirtual #8                  // Method java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;
+        22: invokevirtual #9                  // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+        25: invokevirtual #10                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        28: return
+      LineNumberTable:
+        line 17: 0
+        line 18: 3
+        line 19: 28
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      29     0  this   Lcom/atguigu/java/MethodInnerStrucTest;
+            3      26     1 count   I
+
+  public static int test2(int);
+    descriptor: (I)I
+    flags: ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=2, locals=3, args_size=1
+         0: iconst_0
+         1: istore_1
+         2: bipush        30
+         4: istore_2
+         5: iload_2
+         6: iload_0
+         7: idiv
+         8: istore_1
+         9: goto          17
+        12: astore_2
+        13: aload_2
+        14: invokevirtual #12                 // Method java/lang/Exception.printStackTrace:()V
+        17: iload_1
+        18: ireturn
+      Exception table:
+         from    to  target type
+             2     9    12   Class java/lang/Exception
+      LineNumberTable:
+        line 21: 0
+        line 23: 2
+        line 24: 5
+        line 27: 9
+        line 25: 12
+        line 26: 13
+        line 28: 17
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            5       4     2 value   I
+           13       4     2     e   Ljava/lang/Exception;
+            0      19     0   cal   I
+            2      17     1 result   I
+      StackMapTable: number_of_entries = 2
+        frame_type = 255 /* full_frame */
+          offset_delta = 12
+          locals = [ int, int ]
+          stack = [ class java/lang/Exception ]
+        frame_type = 4 /* same */
+
+  public int compareTo(java.lang.String);
+    descriptor: (Ljava/lang/String;)I
+    flags: ACC_PUBLIC
+    Code:
+      stack=1, locals=2, args_size=2
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 33: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lcom/atguigu/java/MethodInnerStrucTest;
+            0       2     1     o   Ljava/lang/String;
+
+  public int compareTo(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)I
+    flags: ACC_PUBLIC, ACC_BRIDGE, ACC_SYNTHETIC
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: checkcast     #13                 // class java/lang/String
+         5: invokevirtual #14                 // Method compareTo:(Ljava/lang/String;)I
+         8: ireturn
+      LineNumberTable:
+        line 10: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       9     0  this   Lcom/atguigu/java/MethodInnerStrucTest;
+
+  static {};
+    descriptor: ()V
+    flags: ACC_STATIC
+    Code:
+      stack=1, locals=0, args_size=0
+         0: ldc           #15                 // String 测试方法的内部结构
+         2: putstatic     #16                 // Field str:Ljava/lang/String;
+         5: return
+      LineNumberTable:
+        line 13: 0
+}
+Signature: #49                          // Ljava/lang/Object;Ljava/lang/Comparable<Ljava/lang/String;>;Ljava/io/Serializable;
+SourceFile: "MethodInnerStrucTest.java"
+
+```
+
+对上述反编译的文件进行解析：
+
+**类型信息**
+
+在运行时方法区中，类信息中记录了哪个加载器加载了该类，同时类加载器也记录了它加载了哪些类
+
+````java
+//类型信息      
+public class com.atguigu.java.MethodInnerStrucTest extends java.lang.Object implements java.lang.Comparable<java.lang.String>, java.io.Serializable
+````
+
+**域信息**
+
+1.  descriptor：I 表示字段类型为 Integer。
+2.  flags： ACC_PUBLIC 表示字段权限修饰符为 public。
+
+```java
+//域信息
+  public int num;
+    descriptor: I
+    flags: ACC_PUBLIC
+
+  private static java.lang.String str;
+    descriptor: Ljava/lang/String;
+    flags: ACC_PRIVATE, ACC_STATIC
+```
+
+**方法信息**
+
+1.  descriptor: ()V 表示方法返回值类型为 void，并且没有参数列表是空的。
+2.  flags: ACC_PUBLIC 表示方法权限修饰符为 public。
+3.  stack=3 表示操作数栈的最大深度为 3。
+4.  locals=2 表示局部变量个数为 2 个（实例方法的第一个局部变量是 this）。
+5.  test1() 方法虽然没有参数，但是其 args_size=1 ，这时因为将 this 作为了参数。
+6.  然后 0~28 对应的就是 test1() 方法的字节码指令。
+7.  LineNumberTable 是字节码指令和源代码的行号映射。
+8.  LocalVariableTable 是局部变量表，可以看到索引为 0 的变量就是 this。
+
+```java
+public void test1();
+    descriptor: ()V
+    flags: ACC_PUBLIC
+    Code:
+      stack=3, locals=2, args_size=1
+         0: bipush        20
+         2: istore_1
+         3: getstatic     #3                  // Field java/lang/System.out:Ljava/io/PrintStream;
+         6: new           #4                  // class java/lang/StringBuilder
+         9: dup
+        10: invokespecial #5                  // Method java/lang/StringBuilder."<init>":()V
+        13: ldc           #6                  // String count =
+        15: invokevirtual #7                  // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        18: iload_1
+        19: invokevirtual #8                  // Method java/lang/StringBuilder.append:(I)Ljava/lang/StringBuilder;
+        22: invokevirtual #9                  // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+        25: invokevirtual #10                 // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+        28: return
+      LineNumberTable:
+        line 17: 0
+        line 18: 3
+        line 19: 28
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      29     0  this   Lcom/atguigu/java/MethodInnerStrucTest;
+            3      26     1 count   I
+
+```
+
+
+
+### non-final 类型的类变量
+
+1.  静态变量和类关联在一起，随着类的加载而加载，他们成为类数据在逻辑上的一部分。
+  
+2.  类变量被类的所有实例共享，即使没有类实例时，你也可以访问它。
+
+
+**举例**
+
+如下代码所示，即使我们把 order 设置为 null，也不会出现空指针异常这更加表明了 static 类型的字段和方法随着类的加载而加载，并不属于特定的类实例。
+
+```java
+public class MethodAreaTest {
+    public static void main(String[] args) {
+      // 将 order 设成 null 再去调用静态方法，程序不会报错
+        Order order = null;
+        order.hello();
+        System.out.println(order.count);
+    }
+}
+
+class Order {
+    public static int count = 1;
+    public static final int number = 2;
+
+
+    public static void hello() {
+        System.out.println("hello!");
+    }
+}
+```
+
+输出结果：
+
+```
+hello!
+1
+```
+
+
+
+#### 全局常量：static final
+
+1.  全局常量就是使用 `static final` 进行修饰，与被声明为 final 的类变量的处理方法则不同，每个全局常量在编译的时候就会被分配了。
+
+
+查看上面代码，这部分的字节码指令
+
+```java
+class Order {
+    public static int count = 1;
+    public static final int number = 2;
+    ...
+}    
+```
+
+这部分对应的字节码指令如下：
+
+```java
+public static int count;
+    descriptor: I
+    flags: ACC_PUBLIC, ACC_STATIC
+
+public static final int number;
+    descriptor: I
+    flags: ACC_PUBLIC, ACC_STATIC, ACC_FINAL
+    ConstantValue: int 2
+```
+
+可以发现 staitc 和 final 同时修饰的 number 的值在编译上的时候已经写死在字节码文件中了。
+
+
+
+### 运行时常量池
+
+#### 运行时常量池 VS 常量池
+
+> **官方文档**：https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html
+
+
+
+![0009.png](https://s2.loli.net/2023/03/17/yEhx1QPg9tceoOw.png)
+
+1.  方法区内部包含了运行时常量池。
+2.  字节码文件，内部包含了常量池（之前的字节码文件中已经看到了很多 Constant pool 的东西，这个就是常量池）。
+3.  要弄清楚方法区，需要理解清楚 ClassFile，因为加载类的信息都在方法区。
+4.  要弄清楚方法区的运行时常量池，需要理解清楚 ClassFile 中的常量池。
+
+#### 常量池
+
+1.  一个有效的字节码文件中除了包含类的版本信息、字段、方法以及接口等描述符信息外。还包含一项信息就是**常量池表**（**Constant Pool Table**），包括各种字面量和对类型、域和方法的符号引用。
+2.  字面量： 10 、 “我是某某” 这种数字和字符串都是字面量。
+
+![0010.png](https://s2.loli.net/2023/03/17/2VYgCavF8ycHKOl.png)
+
+**为什么需要常量池？**
+
+一个 Java 源文件中的类、接口，编译后产生一个字节码文件。而 Java 中的字节码需要数据支持，通常这种数据会很大以至于不能直接存到字节码里，换另一种方式，可以存到常量池。这个字节码包含了指向常量池的引用。在动态链接的时候会用到运行时常量池。
+
+比如：如下的代码：
+
+```java
+public class SimpleClass {
+    public void sayHello() {
+        System.out.println("hello");
+    }
+}
+```
+
+
+1.  虽然上述代码只有 194 字节，但是里面却使用了 String、System、PrintStream 及 Object 等结构。
+2.  比如说我们这个文件中有 6 个地方用到了"hello"这个字符串，如果不用常量池，就需要在 6 个地方全写一遍，造成臃肿。我们可以将"hello"等所需用到的结构信息记录在常量池中，并通过**引用的方式**，来加载、调用所需的结构。
+
+这里的代码量其实很少了，如果代码多的话，引用的结构将会更多，这里就需要用到常量池了。
+
+![0011.png](https://s2.loli.net/2023/03/17/3w2fMjBGWUI17Xk.png)
+
+**常量池中有啥？**
+
+1.  数量值
+2.  字符串值
+3.  类引用
+4.  字段引用
+5.  方法引用
+
+MethodInnerStrucTest 的 test1 方法的字节码：
+
+```java
+ 0 bipush 20
+ 2 istore_1
+ 3 getstatic #3 <java/lang/System.out>
+ 6 new #4 <java/lang/StringBuilder>
+ 9 dup
+10 invokespecial #5 <java/lang/StringBuilder.<init>>
+13 ldc #6 <count = >
+15 invokevirtual #7 <java/lang/StringBuilder.append>
+18 iload_1
+19 invokevirtual #8 <java/lang/StringBuilder.append>
+22 invokevirtual #9 <java/lang/StringBuilder.toString>
+25 invokevirtual #10 <java/io/PrintStream.println>
+28 return
+```
+
+#3，#5 等等这些带# 的，都是引用了常量池。
+
+**常量池总结**
+
+常量池、可以看做是一张表，虚拟机指令根据这张常量表找到要执行的类名、方法名、参数类型、字面量等类型。
+
+
+
+#### 运行时常量池
+
+1.  运行时常量池（Runtime Constant Pool）是方法区的一部分。
+2.  常量池表（Constant Pool Table）是 Class 字节码文件的一部分，用于存放编译期生成的各种字面量与符号引用，**这部分内容将在类加载后存放到方法区的运行时常量池中**（运行时常量池就是常量池在程序运行时的称呼）。
+3.  运行时常量池，在加载类和接口到虚拟机后，就会创建对应的运行时常量池。
+4.  JVM 为每个已加载的类型（类或接口）都维护一个常量池。池中的数据项像数组项一样，是通过索引访问的。
+5.  运行时常量池中包含多种不同的常量，包括编译期就已经明确的数值字面量，也包括到运行期解析后才能够获得的方法或者字段引用。**此时不再是常量池中的符号地址了，这里换为真实地址**。运行时常量池，相对于 Class 文件常量池的另一重要特征是：具备动态性。
+6.  运行时常量池类似于传统编程语言中的符号表（symbol table），但是它所包含的数据却比符号表要更加丰富一些。
+7.  当创建类或接口的运行时常量池时，如果构造运行时常量池所需的内存空间超过了方法区所能提供的最大值，则 JVM 会抛 OutOfMemoryError 异常。
+
+
+
+方法区的使用举例
+----------
+
+```java
+public class MethodAreaDemo {
+    public static void main(String[] args) {
+        int x = 500;
+        int y = 100;
+        int a = x / y;
+        int b = 50;
+        System.out.println(a + b);
+    }
+}
+```
+
+字节码如下：
+
+```java
+public class com.atguigu.java1.MethodAreaDemo
+  minor version: 0
+  major version: 51
+  flags: ACC_PUBLIC, ACC_SUPER
+Constant pool:
+   #1 = Methodref          #5.#24         // java/lang/Object."<init>":()V
+   #2 = Fieldref           #25.#26        // java/lang/System.out:Ljava/io/PrintStream;
+   #3 = Methodref          #27.#28        // java/io/PrintStream.println:(I)V
+   #4 = Class              #29            // com/atguigu/java1/MethodAreaDemo
+   #5 = Class              #30            // java/lang/Object
+   #6 = Utf8               <init>
+   #7 = Utf8               ()V
+   #8 = Utf8               Code
+   #9 = Utf8               LineNumberTable
+  #10 = Utf8               LocalVariableTable
+  #11 = Utf8               this
+  #12 = Utf8               Lcom/atguigu/java1/MethodAreaDemo;
+  #13 = Utf8               main
+  #14 = Utf8               ([Ljava/lang/String;)V
+  #15 = Utf8               args
+  #16 = Utf8               [Ljava/lang/String;
+  #17 = Utf8               x
+  #18 = Utf8               I
+  #19 = Utf8               y
+  #20 = Utf8               a
+  #21 = Utf8               b
+  #22 = Utf8               SourceFile
+  #23 = Utf8               MethodAreaDemo.java
+  #24 = NameAndType        #6:#7          // "<init>":()V
+  #25 = Class              #31            // java/lang/System
+  #26 = NameAndType        #32:#33        // out:Ljava/io/PrintStream;
+  #27 = Class              #34            // java/io/PrintStream
+  #28 = NameAndType        #35:#36        // println:(I)V
+  #29 = Utf8               com/atguigu/java1/MethodAreaDemo
+  #30 = Utf8               java/lang/Object
+  #31 = Utf8               java/lang/System
+  #32 = Utf8               out
+  #33 = Utf8               Ljava/io/PrintStream;
+  #34 = Utf8               java/io/PrintStream
+  #35 = Utf8               println
+  #36 = Utf8               (I)V
+{
+  public com.atguigu.java1.MethodAreaDemo();
+    descriptor: ()V
+    flags: ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: return
+      LineNumberTable:
+        line 7: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Lcom/atguigu/java1/MethodAreaDemo;
+
+  public static void main(java.lang.String[]);
+    descriptor: ([Ljava/lang/String;)V
+    flags: ACC_PUBLIC, ACC_STATIC
+    Code:
+      stack=3, locals=5, args_size=1
+         0: sipush        500
+         3: istore_1
+         4: bipush        100
+         6: istore_2
+         7: iload_1
+         8: iload_2
+         9: idiv
+        10: istore_3
+        11: bipush        50
+        13: istore        4
+        15: getstatic     #2                  // Field java/lang/System.out:Ljava/io/PrintStream;
+        18: iload_3
+        19: iload         4
+        21: iadd
+        22: invokevirtual #3                  // Method java/io/PrintStream.println:(I)V
+        25: return
+      LineNumberTable:
+        line 9: 0
+        line 10: 4
+        line 11: 7
+        line 12: 11
+        line 13: 15
+        line 14: 25
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      26     0  args   [Ljava/lang/String;
+            4      22     1     x   I
+            7      19     2     y   I
+           11      15     3     a   I
+           15      11     4     b   I
+}
+SourceFile: "MethodAreaDemo.java"
+
+```
+
+
+
+#### 图解字节码指令执行流程
+
+![0012.png](https://s2.loli.net/2023/03/17/Hc84IU126kdiLnf.png)
+
+![0013.png](https://s2.loli.net/2023/03/17/engd9GYMkovqATR.png)
+
+![0014.png](https://s2.loli.net/2023/03/17/zugePvtE8aBS6hR.png)
+
+![0015.png](https://s2.loli.net/2023/03/17/R4SxzO3hTgJMKDu.png)
+
+![0016.png](https://s2.loli.net/2023/03/17/Y9qHzVncZQB7uXA.png)
+
+![0017.png](https://s2.loli.net/2023/03/17/bqeoYyZBv4tc9r8.png)
+
+![0018.png](https://s2.loli.net/2023/03/17/kBo7EwxiT3WuMsZ.png)
+
+![0018.png](https://s2.loli.net/2023/03/17/kBo7EwxiT3WuMsZ.png)
+
+![0020.png](https://s2.loli.net/2023/03/17/2HtJbUvhQnWF1Xs.png)
+
+![0021.png](https://s2.loli.net/2023/03/17/6ueS2b7JLtVgdWO.png)
+
+图片写错了是 #25.#26 不是 #15.#16（获得System类）
+
+![0022.png](https://s2.loli.net/2023/03/17/o3nRzkSu6pwOElP.png)
+
+![0023.png](https://s2.loli.net/2023/03/17/ERxUvOt6Ju7NmPC.png)
+
+![0024.png](https://s2.loli.net/2023/03/17/J5XuDMqINiRAcsx.png)
+
+![0025.png](https://s2.loli.net/2023/03/17/GJhiaW8nB4CYZ57.png)
+
+![0026.png](https://s2.loli.net/2023/03/17/EjgSoUwGAq48J5H.png)
+
+![0027.png](https://s2.loli.net/2023/03/17/sTyreWJb2wj6i4o.png)
+
+
+
+**符号引用转换成直接引用**
+
+上面代码调用 `System.out.println()` 方法时，首先需要看看 System 类有没有加载，再看看 PrintStream 类有没有加载。如果没有加载，则执行加载，执行时，将常量池中的符号引用（字面量）转换为运行时常量池的直接引用（真正的地址值）。
+
+
+
+方法区演进细节
+---------
+
+### 永久代演进过程
+
+首先明确：只有 HotSpot 才有永久代。BEA JRockit、IBM J9等来说，是不存在永久代的概念的。原则上如何实现方法区属于虚拟机实现细节，不受《Java虚拟机规范》管束，并不要求统一。
+
+Hotspot中方法区的变化：
+
+| Java 版本     | 永久代的存在情况                                             |
+| ------------- | ------------------------------------------------------------ |
+| JDK 1.6及以前 | 有永久代（permanent generation），静态变量存储在永久代上     |
+| Java 7        | 有永久代，但已经逐步 “去永久代”：**字符串常量池，静态变量移除，保存在堆中** |
+| Java 8        | 无永久代，类型信息，字段，方法，常量保存在本地内存的元空间，**但字符串常量池、静态变量仍然在堆中** |
+
+
+
+**JDK6**
+
+方法区由永久代实现，使用 JVM 虚拟机内存（虚拟的内存）
+
+![0028.png](https://s2.loli.net/2023/03/17/jqAVEiQs7euOdb9.png)
+
+
+
+**JDK7**
+
+方法区由永久代实现，使用 JVM 虚拟机内存
+
+![0029.png](https://s2.loli.net/2023/03/17/M5UyOuLxwVEkmPW.png)
+
+
+
+**JDK8**
+
+方法区由元空间实现，使用物理机本地内存
+
+![0030.png](https://s2.loli.net/2023/03/17/qNVF8xdv2wo4gep.png)
+
+
+
+
+
+### 永久代为什么要被元空间替代？
+
+> **官方文档**：http://openjdk.java.net/jeps/122
+
+随着 Java8 的到来，HotSpot VM 中再也见不到永久代了。但是这并不意味着类的元数据信息也消失了。这些数据被移到了一个与堆不相连的本地内存区域，这个区域叫做元空间（Metaspace）。由于类的元数据分配在本地内存中，元空间的最大可分配空间就是系统可用内存空间。
+
+这项改动是很有必要的，原因有：
+1.  为永久代设置空间大小是很难确定的。在某些场景下，如果动态加载类过多，容易产生 Perm 区的 OOM。比如某个实际 Web 工程中，因为功能点比较多，在运行过程中，要不断动态加载很多类，经常出现致命错误。`Exception in thread 'dubbo client x.x connector' java.lang.OutOfMemoryError:PermGen space` 而元空间和永久代之间最大的区别在于：元空间并不在虚拟机中，而是使用本地内存。 因此，默认情况下，元空间的大小仅受本地内存限制。
+2.  对永久代进行调优是很困难的。**方法区的垃圾收集主要回收两部分内容：常量池中废弃的常量和不再用的类型**，方法区的调优主要是为了降低 **Full GC **的次数。
+    1.  有些人认为方法区（如 HotSpot 虚拟机中的元空间或者永久代）是没有垃圾收集行为的，其实不然。《Java虚拟机规范》对方法区的约束是非常宽松的，提到过可以不要求虚拟机在方法区中实现垃圾收集。事实上也确实有未实现或未能完整实现方法区类型卸载的收集器存在（如 Java 11 时期的 ZGC 收集器就不支持类卸载）。
+    2.  一般来说这个区域的回收效果比较难令人满意，尤其是类型的卸载，条件相当苛刻。但是这部分区域的回收有时又确实是必要的。以前 Sun 公司的 Bug 列表中，曾出现过的若干个严重的 Bug 就是由于低版本的 HotSpot 虚拟机对此区域未完全回收而导致内存泄漏。
+
+
+
+### 字符串常量池
+
+**字符串常量池 StringTable 为什么要调整位置？**
+
+Java 7 中将 StringTable 放到了堆空间中。因为永久代的回收效率很低，在 Full GC的时候才会执行永久代的垃圾回收，而 Full GC 是老年代的空间不足、永久代不足时才会触发。这就导致 StringTable 回收效率不高，而我们开发中会有大量的字符串被创建，回收效率低，导致永久代内存不足。放到堆里，能及时回收内存。
+
+### 静态变量放在哪里
+
+#### 对象实体在哪里放着？
+
+```java
+/**
+ * 结论：
+ * 1、静态引用对应的对象实体(也就是这个new byte[1024 * 1024 * 100])始终都存在堆空间，
+ * 2、只是那个变量(相当于下面的arr变量名)在JDK6,JDK7,JDK8存放位置中有所变化
+ *
+ * jdk7：
+ * -Xms200m -Xmx200m -XX:PermSize=300m -XX:MaxPermSize=300m -XX:+PrintGCDetails
+ * jdk 8：
+ * -Xms200m -Xmx200m -XX:MetaspaceSize=300m -XX:MaxMetaspaceSize=300m -XX:+PrintGCDetails
+ */
+public class StaticFieldTest {
+    private static byte[] arr = new byte[1024 * 1024 * 100];//100MB
+
+    public static void main(String[] args) {
+        System.out.println(StaticFieldTest.arr);
+    }
+}
+```
+
+**Java 6 环境下**
+
+![0031.png](https://s2.loli.net/2023/03/17/BGPK4AdzOTHkg1F.png)
+
+
+
+**Java 7 环境下**
+
+![0032.png](https://s2.loli.net/2023/03/17/UsJYLNDbfGC9lct.png)
+
+
+
+**Java 8 环境下**
+
+![0033.png](https://s2.loli.net/2023/03/17/J1KiEvNatSVoR7b.png)
+
+
+
+#### 变量(名)存放在哪里？
+
+这个问题需要用 JHSDB 工具来进行分析，这个工具是 Java 9 开始自带（9以前没有），在 bin 目录下可以找到
+
+```java
+package com.atguigu.java1;
+
+/**
+ * 《深入理解Java虚拟机》中的案例：
+ * staticObj、instanceObj、localObj存放在哪里？
+ */
+public class StaticObjTest {
+    static class Test {
+        static ObjectHolder staticObj = new ObjectHolder();
+        ObjectHolder instanceObj = new ObjectHolder();
+
+        void foo() {
+            ObjectHolder localObj = new ObjectHolder();
+            System.out.println("done");
+        }
+    }
+
+    private static class ObjectHolder {
+    }
+
+    public static void main(String[] args) {
+        Test test = new StaticObjTest.Test();
+        test.foo();
+    }
+}
+
+```
+
+**Java 6 环境下**
+
+1、staticObj 随着 Test 的类型信息存放在方法区。
+
+2、instanceObj 随着 Test 的对象实例存放在 Java 堆。
+
+3、localObject 则是存放在 foo() 方法栈帧的局部变量表中。
+
+4、测试发现：三个对象的数据在内存中的地址都落在 Eden 区范围内，所以结论：**只要是对象实例必然会在 Java 堆中分配**。
+
+![0034.png](https://s2.loli.net/2023/03/17/mVHLjPEzSdyDW27.png)
+
+0x00007f32c7800000 （Eden 区的起始地址)）   ----   0x00007f32c7b50000 （Eden 区的终止地址），可以发现三个变量都在这个范围内，所以可以得到上面结论。
+
+5、接着，找到了一个引用该 staticObj 对象的地方，是在一个 java.lang.Class 的实例里，并且给出了这个实例的地址，通过 Inspector 查看该对象实例，可以清楚看到这确实是一个 java.lang.Class 类型的对象实例，里面有一个名为 staticobj 的实例字段：
+
+![0035.png](https://s2.loli.net/2023/03/17/DhiIs72rfyKvbFY.png)
+
+从《Java虚拟机规范》所定义的概念模型来看，所有 Class 相关的信息都应该存放在方法区之中，但方法区该如何实现，《Java虚拟机规范》并未做出规定，这就成了一件允许不同虚拟机自己灵活把握的事情。Java 7 及其以后版本的 HotSpot 虚拟机选择把静态变量与类型在 Java 语言一端的映射 Class 对象存放在一起，**存储于 Java 堆之中**，从我们的实验中也明确验证了这一点。
+
+
+
+方法区的垃圾回收
+----------
+
+1.  有些人认为方法区（如 HotSpot 虚拟机中的元空间或者永久代）是没有垃圾收集行为的，其实不然。《Java虚拟机规范》对方法区的约束是非常宽松的，提到过可以不要求虚拟机在方法区中实现垃圾收集。事实上也确实有未实现或未能完整实现方法区**类型卸载**的收集器存在（如 Java 11 时期的ZGC收集器就不支持类卸载）。
+  
+3.  一般来说这个区域的回收效果比较难令人满意，尤其是类型的卸载，条件相当苛刻。但是这部分区域的回收有时又确实是必要的。以前 sun 公司的 Bug 列表中，曾出现过的若干个严重的 Bug 就是由于低版本的 HotSpot 虚拟机对此区域未完全回收而导致内存泄漏。
+  
+4.  方法区的垃圾收集主要回收两部分内容：**常量池中废弃的常量和不再使用的类型**。
+
+**废弃常量的回收**
+
+
+1.  先来说说方法区内常量池之中主要存放的两大类常量：字面量和符号引用。字面量比较接近Java语言层次的常量概念，如文本字符串、被声明为 final 的常量值等。而符号引用则属于编译原理方面的概念，包括下面三类常量：
+
+    *   类和接口的全限定名
+    *   字段的名称和描述符
+    *   方法的名称和描述符
+2.  HotSpot 虚拟机对常量池的回收策略是很明确的，只要常量池中的常量没有被任何地方引用，就可以被回收。
+  
+3.  回收废弃常量与回收 Java 堆中的对象非常类似。（关于常量的回收比较简单，重点是类的回收）
+
+**类卸载**
+
+判定一个常量是否“废弃”还是相对简单，而要判定一个类型是否属于“不再被使用的类”的条件就比较苛刻了。需要同时满足下面三个条件：
+
+- 该类所有的实例都已经被回收，也就是 Java 堆中不存在该类及其任何派生子类的实例。
+
+- 加载该类的类加载器已经被回收，这个条件除非是经过精心设计的可替换类加载器的场景，如 OSGi、JSP 的重加载等，否则通常是很难达成的。
+
+- 该类对应的 java.lang.Class 对象没有在任何地方被引用，即无法在任何地方通过反射访问该类的方法。
+
+Java 虚拟机被允许对满足上述三个条件的无用类进行回收，这里说的仅仅是“被允许”，而并不是和对象一样，没有引用了就必然会回收。关于是否要对类型进行回收，HotSpot 虚拟机提供了 `-Xnoclassgc `参数进行控制，还可以使用 `-verbose:class`  以及  `-XX：+TraceClass-Loading`、`-XX：+TraceClassUnLoading `查看类加载和卸载信息。
+
+在大量使用反射、动态代理、CGLib 等字节码框架，动态生成 JSP 以及 OSGi 这类频繁自定义类加载器的场景中，通常都需要 Java 虚拟机具备类型卸载的能力，以保证不会对方法区造成过大的内存压力。
+
+
+
+运行时数据区总结
+----------
+
+![0036.png](https://s2.loli.net/2023/03/17/Eu1LBdUQkyGrJ9n.png)
+
+
+
+## 直接内存
+
+### 直接内存概述
+
+1.  不是虚拟机运行时数据区的一部分，也不是《Java虚拟机规范》中定义的内存区域。
+2.  直接内存是在 Java 堆外的、直接向系统申请的内存区间。
+3.  来源于 NIO，通过存在堆中的 DirectByteBuffer 操作 Native 内存。Java 的 NIO 库允许 Java程序使用直接内存，用于数据缓冲区。
+4.  通常，访问直接内存的速度会优于 Java 堆。即读写性能高。因此出于性能考虑，读写频繁的场合可能会考虑使用直接内存。
+
+
+```java
+/**
+ *  IO                  NIO (New IO / Non-Blocking IO)
+ *  byte[] / char[]     Buffer
+ *  Stream              Channel
+ *
+ * 查看直接内存的占用与释放
+ */
+public class BufferTest {
+    private static final int BUFFER = 1024 * 1024 * 1024;//1GB
+
+    public static void main(String[] args){
+        //直接分配本地内存空间
+        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(BUFFER);
+        System.out.println("直接内存分配完毕，请求指示！");
+
+        Scanner scanner = new Scanner(System.in);
+        scanner.next();
+
+        System.out.println("直接内存开始释放！");
+        byteBuffer = null;
+        System.gc();
+        scanner.next();
+    }
+}
+
+```
+
+直接占用了 1G 的本地内存
+
+![0037.jpg](https://s2.loli.net/2023/03/17/LryTFntwH1RGOMk.jpg)
+
+
+
+### BIO 与 NIO
+
+**非直接缓存区（BIO）**
+
+原来采用 BIO 的架构，在读写本地文件时，我们需要从用户态切换成内核态
+
+![0038.png](https://s2.loli.net/2023/03/17/T2m5kOubxVa7new.png)
+
+**直接缓冲区（NIO）**
+
+NIO 直接操作物理磁盘，省去了中间过程
+
+![0039.png](https://s2.loli.net/2023/03/17/PXMkd1slrwIZQBG.png)
+
+### 直接内存与 OOM
+
+1.  直接内存也可能导致 OutOfMemoryError 异常
+2.  由于直接内存在 Java 堆外，因此它的大小不会直接受限于 `-Xmx` 指定的最大堆大小，但是系统内存是有限的，Java 堆和直接内存的总和依然受限于操作系统能给出的最大内存。
+3.  直接内存的缺点为：
+  
+    *   分配回收成本较高
+    *   不受 JVM 内存回收管理
+4.  直接内存大小可以通过 `MaxDirectMemorySize` 设置，如果不指定，默认与堆的最大值`-Xmx`参数值一致。
+
+
+```java
+/**
+ * 本地内存的OOM:  OutOfMemoryError: Direct buffer memory
+ *
+ */
+public class BufferTest2 {
+    private static final int BUFFER = 1024 * 1024 * 20;//20MB
+
+    public static void main(String[] args) {
+        ArrayList<ByteBuffer> list = new ArrayList<>();
+
+        int count = 0;
+        try {
+            while(true){
+                ByteBuffer byteBuffer = ByteBuffer.allocateDirect(BUFFER);
+                list.add(byteBuffer);
+                count++;
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        } finally {
+            System.out.println(count);
+        }
+
+
+    }
+}
+
+```
+
+执行结果如下：
+
+```java
+Exception in thread "main" java.lang.OutOfMemoryError: Direct buffer memory
+	at java.nio.Bits.reserveMemory(Bits.java:694)
+	at java.nio.DirectByteBuffer.<init>(DirectByteBuffer.java:123)
+	at java.nio.ByteBuffer.allocateDirect(ByteBuffer.java:311)
+	at com.atguigu.java.BufferTest2.main(BufferTest2.java:21)
+```
+
+![0040.jpg](https://s2.loli.net/2023/03/17/SJ7Id4ZmaYcDw8j.jpg)
+
+
+
+
+
+常见面试题
+-------
+
+1.  百度
+    *   三面：说一下 JVM 内存模型吧，有哪些区？分别干什么的？
+2.  蚂蚁金服：
+    *   Java8 的内存分代改进
+    *   JVM 内存分哪几个区，每个区的作用是什么？
+    *   一面：JVM 内存分布/内存结构？栈和堆的区别？堆的结构？为什么两个 survivor 区？
+    *   二面：Eden 和 survior 的比例分配
+3.  小米：
+    *   jvm 内存分区，为什么要有新生代和老年代
+4.  字节跳动：
+    *   二面：Java 的内存分区
+    *   二面：讲讲 JVM 运行时数据库区
+    *   什么时候对象会进入老年代？
+5.  京东：
+    *   JVM 的内存结构，Eden 和 Survivor 比例。
+    *   JVM 内存为什么要分成新生代，老年代，持久代。新生代中为什么要分为 Eden 和 Survivor。
+6.  天猫：
+    *   一面：JVM 内存模型以及分区，需要详细到每个区放什么。
+    *   一面：JVM 的内存模型，Java8 做了什么改动
+7.  拼多多：
+    *   JVM 内存分哪几个区，每个区的作用是什么？
+8.  美团：
+    *   Java 内存分配
+    *   JVM 的永久代中会发生垃圾回收吗？
+    *   一面：JVM 内存分区，为什么要有新生代和老年代？
