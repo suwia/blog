@@ -393,7 +393,7 @@ public static void main(String[] args) {
 
 比较指令有：`dcmpg`、`dcmpl`、`fcmpg`、`fcmpl`、`lcmp`，与前面讲解的指令类似，首字符 d 表示 double 类型，f 表示 float，l 表示 long。其中 double 类型 和 float 类型的指令都有两套，这是因为浮点型的数据需要处理 NaN 值的情况。long 类型的无需处理 NaN 值所以只需要一套指令就行。
 
-由于只有数值类型的数据才需要比较大小，所以像 boolean、引用数据类型都没有对应的指令。byte、char、short、int 类型的比较都使用 `lcmp` 指令。
+由于只有数值类型的数据才需要比较大小，所以像 boolean、引用数据类型都没有对应的指令。
 
 **double 类型与 float 类型的比较指令**
 
@@ -823,15 +823,17 @@ public class ClassCastTest {
 
 ### 方法调用指令
 
-- `invokevirtual` 指令用于调用对象的实例方法，根据对象的实际类型进行分派（虚方法分派），支持多态。这也是Java语言中最常见的方法分派方式。
+- `invokevirtual` 指令用于调用对象的实例方法，根据对象的实际类型进行分派（虚方法分派），支持多态。这也是 Java 语言中最常见的方法分派方式。
 
-- `invokeinterface` 指令用于调用接口方法，它会在运行时搜索由特定对象所实现的这个接口方法，并找出适合的方法进行调用。
+- `invokeinterface` 指令用于调用接口方法，它会在运行时搜索由特定对象所实现的这个接口方法，并找出适合的方法进行调用。使用 `invokeinterface` 指令时，方法调用采用动态绑定，因为具体的实现是在运行时才能确定的。
 
 - `invokespecial` 指令用于调用一些需要特殊处理的实例方法，包括实例初始化方法（构造器）、私有方法和父类方法。这些方法都是静态类型绑定的，不会在调用时进行动态派发。
 
-- `invokestatic` 指令用于调用命名类中的类方法（static方法）。这是静态绑定的。
+- `invokestatic` 指令用于调用命名类中的类方法（static方法）。方法调用总是采用静态绑定，因为静态方法的调用目标在编译时就已经确定了。
 
-- `invokedynamic` 指令用于调用动态绑定的方法，这个是 JDK1.7 后新加入的指令。用于在运行时动态解析出调用点限定符所引用的方法，并执行该方法。`invokedynamic` 指令的分派逻辑是由用户所设定的引导方法决定的，而前面4条调用指令的分派逻辑都固化在java虚拟机内部。
+- `invokedynamic` 指令用于调用动态绑定的方法，这个是 JDK1.7 后新加入的指令。用于在运行时动态解析出调用点限定符所引用的方法，并执行该方法。`invokedynamic` 指令的分派逻辑是由用户所设定的引导方法决定的，而前面4条调用指令的分派逻辑都固化在java虚拟机内部。`invokedynamic` 指令在运行时处理 Java 字节码中未知的方法，并将其绑定到具体实现。它提供了一种通用的方法调用机制，可以动态地选择一个方法实现。使用 `invokedynamic` 指令时，方法调用采用动态绑定。
+
+因此，四个常规的指令中，只有invokestatic指令是静态绑定的，其他三个指令：invokespecial、invokeinterface和invokevirtual指令都是动态绑定的。而invokedynamic指令则可以根据需要进行动态或静态绑定。
 
 | 字节码指令      | 含义                                                         |
 | --------------- | ------------------------------------------------------------ |
@@ -839,17 +841,402 @@ public class ClassCastTest {
 | invokeinterface | 调用接口方法                                                 |
 | invokespecial   | 调用一些需要特殊处理的实例方法，包括实例初始化方法（构造器）、私有方法和父类方法 |
 | invokestatic    | 调用命名类中的类方法（static方法）                           |
-| invokedynamic   | 调用动态绑定的方法                                           |
+| invokedynamic   | 处理 Java 字节码中未知的方法，并将其绑定到具体实现           |
+
+#### invokeinterface
+
+`invokeinterface` 用于调用接口方法。该指令类似于 `invokevirtual` 指令，但是它的操作数中包含了一个接口的符号引用，在运行时，实际调用的方法是在运行时确定的，并且要求接收者对象必须实现了这个接口。
+
+`invokeinterface` 操作数格式如下：
+
+``` java
+invokeinterface <method-ref>, <count> 
+```
+
+其中，`<method-ref>` 是一个对接口方法的符号引用，包括了接口的名字、方法名和描述符；count 指定了待调用方法的参数数量（包括对象引用）。在执行该指令前，需要将接口对象的引用压入栈顶，`invokeinterface` 指令会从操作数栈中弹出 count 个操作数，其中最顶部的一个操作数为对象引用，其余的操作数为接口方法的参数。然后，JVM会在对象引用所指向的对象上查找一个能够响应接口中指定的方法的对象，并进行方法调用。如果找到了多个对象，则选择其中某一个对象进行方法调用，具体选择哪个对象由 Java 虚拟机实现决定。
+
+值得注意的是，由于接口的实现类在运行时才能确定，因此 `invokeinterface` 指令的解析和分派过程比普通方法调用要耗费更多的时间。
+
+**代码示例**
+
+``` java
+public class InvokeTest {
+
+  // 调用接口方法
+	public void testInvokeInterface() {
+		TestInterface t = new User();
+		int length = t.length();
+	}
+
+}
+
+/**
+ * 接口实现
+ */
+class User implements TestInterface {
+
+	@Override
+	public int length() {
+		return 0;
+	}
+
+	@Override
+	public long weigth() {
+		return TestInterface.super.weigth();
+	}
+
+}
+
+/**
+ * 接口
+ */
+interface TestInterface {
+
+	int length();
+
+	default long weigth() {
+		return 100L;
+	}
+
+	static String name() {
+		return "Jean";
+	}
+
+}
+```
+
+**字节码指令**
+
+``` java
+ 0 new #7 <com/fgi/test/User>
+ 3 dup
+ 4 invokespecial #9 <com/fgi/test/User.<init> : ()V>
+ 7 astore_1
+ 8 aload_1
+ 9 invokeinterface #10 <com/fgi/test/TestInterface.length : ()I> count 1
+14 istore_2
+15 return
+```
+
+- index 为 9 的字节码，由于该方法没有入参，所以 count = 1，代表的就是执行方法的实际对象的引用。
+
+
+
+#### invokespecial
+
+Java 字节码中的 `invokespecial` 指令用于调用对象的私有方法、构造函数或超类中的方法，因为这些方法都无法被覆盖或继承。与其他方法调用指令不同，`invokespecial` 指令没有多态性，即它总是调用当前对象类型中的方法。
+
+当 JVM 执行 `invokespecial` 指令时，它会首先检查该方法是否为对象的构造函数或虚拟机中的 Object 类型中的方法，如果是，则直接调用该方法。否则，JVM 会在该对象的类型中查找该方法并调用之。需要注意的是，在使用 `invokespecial` 调用构造函数时，必须保证该构造函数是该对象类型中的构造函数，而不能是任何子类中的构造函数。这是因为 Java 对象的创建过程中，必须先调用父类的构造函数，然后再调用子类的构造函数。
+
+"invokespecial" 指令的格式如下：
+
+```java
+invokespecial <method-ref>
+```
+
+其中，`<method-ref>` 是一个指向方法的符号引用，它包括了该方法所属的类名、方法名以及描述符。例如：
+
+```java
+invokespecial java/lang/Object/<init>()V
+```
+
+这条指令用于调用 Object 类的默认构造函数。
+
+
+
+#### invokestatic
+
+`invokestatic` 用于调用静态方法。它会将方法名和类名作为参数，并从当前类的常量池中找到对应的方法符号引用。然后将这个符号引用解析为实际的方法在运行时调用。
+
+以下是一个示例代码，演示如何使用 `invokestatic` 指令：
+
+```java
+public class Example {
+    public static void main(String[] args) {
+        int result = add(3, 4);
+        System.out.println(result);
+    }
+
+    public static int add(int a, int b) {
+        return a + b;
+    }
+}
+```
+
+在上面的示例中，调用了 `add` 方法来计算两个整数的和。因为 `add` 方法是静态的，所以可以直接通过类名来调用，而不需要先创建对象。在 `main` 方法中，使用 `invokestatic` 指令来调用 `add` 方法，将参数值传递给该方法并获得返回值。
+
+下面是上述示例代码编译后的字节码，其中包含了 `invokestatic` 指令：
+
+```java
+Compiled from "Example.java"
+public class Example {
+  public Example();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static void main(java.lang.String[]);
+    Code:
+       0: iconst_3
+       1: iconst_4
+       2: invokestatic  #2                  // Method add:(II)I
+       5: istore_1
+       6: getstatic     #3                  // Field java/lang/System.out:Ljava/io/PrintStream;
+       9: iload_1
+      10: invokevirtual #4                  // Method java/io/PrintStream.println:(I)V
+      13: return
+
+  public static int add(int, int);
+    Code:
+       0: iload_0
+       1: iload_1
+       2: iadd
+       3: ireturn
+}
+```
+
+在 `main` 方法中，第 2 行使用 `invokestatic` 指令来调用静态方法 `add`。该指令的操作数为 `#2`，表示 `add` 方法的符号引用在常量池中的索引为 2。因为 `add` 方法是静态的，所以不需要将任何对象引用传递给该方法。
+
+
+
+#### invokevirtual
+
+`invokevirtual` 用于调用对象方法。它的操作数是一个常量池索引，该索引指向一个 CONSTANT_Methodref_info 常量，该常量包含了被调用方法的类和方法签名信息。
+
+下面是一个示例代码，展示了如何使用 `invokevirtual `指令调用对象方法：
+
+``` java
+public class MyClass {
+    public void myMethod() {
+        System.out.println("Hello, World!");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        MyClass obj = new MyClass();
+        obj.myMethod(); // 调用 myMethod 方法
+    }
+} 
+```
+
+在这个例子中，我们创建了一个名为 MyClass 的类并定义了一个名为 myMethod() 的方法。然后，在 Main 类的 main() 方法中，我们实例化了一个 MyClass 对象，并使用 `obj.myMethod()` 语句调用 myMethod() 方法。
+
+在编译 Main 类时，Java 编译器将 obj.myMethod() 语句编译为以下字节码指令：
+
+``` java
+aload_1     ; 将对象引用加载到操作数栈
+invokespecial #X ; 调用 myMethod 方法
+```
+
+其中，`aload_1` 指令将 obj 对象引用加载到操作数栈，`invokespecial` 指令则使用常量池索引 #X 调用 myMethod() 方法。在运行时，Java 虚拟机将从常量池中获取 #X 索引处的方法信息，并执行相应的方法调用操作。
+
+
+
+#### invokedynamic
+
+`invokedynamic `是 Java 虚拟机在Java 7 新添加的一条指令，用于在运行时动态地绑定方法。在以前版本的 JVM 中，由于 Java 语言中的方法调用和静态类型检查是在编译时完成的，因此在运行时动态地绑定方法比较困难。而`invokedynamic`指令可以通过先定义一个返回正确的方法句柄的引导方法，再将该方法句柄与实际调用的目标方法进行关联来实现这一点。
+
+下面是一个示例代码，演示了如何使用`invokedynamic`指令：
+
+```java
+public class LambdaExample {
+    public static void main(String[] args) {
+        Runnable r = () -> { System.out.println("Hello, World!"); };
+        r.run();
+    }
+}
+```
+
+这个程序创建了一个`Runnable`对象，并使用 Lambda 表达式将其实现为输出"Hello, World!"。当我们调用`run()`方法时，JVM 会动态地绑定 Lambda 表达式，并执行其中的代码。
+
+接下来，我们可以使用以下命令将Java源码编译成字节码：
+
+```shell
+javac LambdaExample.java
+```
+
+反编译生成的字节码可以使用以下命令查看：
+
+```shell
+javap -c LambdaExample.class
+```
+
+反编译后的代码如下所示：
+
+```java
+public class LambdaExample {
+  public LambdaExample();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static void main(java.lang.String[]);
+    Code:
+       0: invokedynamic #2,  0              // InvokeDynamic #0:run:()Ljava/lang/Runnable;
+       5: astore_1
+       6: aload_1
+       7: invokeinterface #3,  1            // InterfaceMethod java/lang/Runnable.run:()V
+      12: return
+
+  private static void lambda$main$0();
+    Code:
+       0: getstatic     #4                  // Field java/lang/System.out:Ljava/io/PrintStream;
+       3: ldc           #5                  // String Hello, World!
+       5: invokevirtual #6                  // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+       8: return
+}
+```
+
+在这个字节码中，`invokedynamic`指令被用于调用 Lambda 表达式。具体来说，`invokedynamic #2, 0`表示要调用一个动态方法，并且该方法的名称和类型将在运行时确定。这个指令会导致 JVM 查找和绑定与 Lambda 表达式关联的动态方法，并执行其中的代码。
+
+在本例中，动态方法的名称为`run`，并且其返回类型为`Runnable`接口。当解释器执行这条指令时，它将根据 Lambda 表达式的实现动态地创建一个`Runnable`对象，并将其作为结果返回。接下来，我们将这个对象存储在本地变量`r`中，并通过`invokeinterface`指令调用`run()`方法，从而触发了动态方法的执行。
+
+需要注意的是，在Java 8之前，由于`invokedynamic`指令无法通过 Java 代码生成，得借助第三方生成，Lambda表达式必须通过内部类实现。因此，上述代码在Java 8之前的版本中无法编译。
+
+
 
 ### 方法返回指令
+
+方法调用结束前，需要进行返回。方法返回指令是根据返回值的类型区分的。
+
+| 方法返回指令 | void   | int     | long    | float   | double  | reference |
+| ------------ | ------ | ------- | ------- | ------- | ------- | --------- |
+| **xreturn**  | return | ireturn | lreturn | freutrn | dreturn | areturn   |
+
+- `ireturn`（当返回值是 boolean、byte、char、short 和 int  类型时使用）。
+
+- `return` 指令供声明为 void 的方法、实例初始化方法以及类和接口的类初始化方法使用。
+
+通过 `xreturn` 指令（除 `return` 指令外），将当前函数操作数栈的顶层元素弹出，并将这个元素压入调用者函数的操作数栈中（因为调用者非常关心函数的返回值），所有在当前函数操作数栈中的其他元素都会被丢弃。最后，会丢弃当前方法的整个帧，恢复调用者的帧，并将控制权转交给调用者。
+
+如果当前返回的是 synchronized 方法，那么还会执行一个隐含的 `monitorexit` 指令，退出临界区。
+
+**代码示例**
+
+``` java
+public int methodReturn() {
+    int i = 500;
+    int j = 200;
+    int k = 50;
+    
+    return (i + j) / k;
+}
+```
+
+![method-return-1.png|inline](https://s2.loli.net/2023/03/17/xI6p1nZVfa8WN23.png)
 
 
 
 ## 操作数栈管理指令
 
+如同操作一个普通数据结构中的堆栈那样，JVM 提供的操作数栈管理指令，可以用于直接操作操作数栈的指令。这类指令包括如下内容：
+
+- 将一个或两个元素从栈顶弹出，并且直接废弃：`pop` 、`pop2`
+
+- 复制栈顶一个或两个数值并将复制值或双份的复制值重新压入栈顶：`dup`、`dup2`、`dup_x1`、`dup2_x1`、`dup_x2`、`dup2_x2`
+
+- 将栈最顶端的两个Slot数值位置交换：`swap`。Java 虚拟机没有提供交换两个 64 位数据类型（long、double）数值的指令。
+
+- 指令`nop`，是一个非常特殊的指令，它的字节码为0x00。和汇编语言中的 nop 一样，它表示什么都不做。这条指令一般可用于调试、占位等。
+
+这些指令属于通用型，对栈的压入或者弹出无需指明数据类型。
+
+**dup 相关指令**
+
+不带 \_x 的指令是复制栈顶数据并压入栈顶。包括两个指令，`dup`，`dup2`。dup 的系数代表要复制的 Slot 个数。
+
+- `dup` 指令用于复制 1 个 Slot 的数据。例如 1 个 int 或 1 个 reference 类型数据。
+- `dup2` 指令用于复制 2 个 Slot 的数据。例如 1个 long 或者 1 个 double，或者 2 个 int，或者 1 个 int + 1 个 float 类型数据。
+
+带 \_x 的指令是复制栈顶数据并插入栈顶以下的某个位置。共有4个指令，`dup_x1`，`dup2_x1`，`dup_x2`，`dup2_x2`。对于带 \_x 的复制插入指令，只要将指令的 dup 和 x 的系数相加，结果即为需要插入的位置。
+
+- `dup_x1` 插入位置：1 + 1 = 2，即复制当前栈顶 1 个 Slot 的元素，并且插入到当前栈顶的 2 个 Slot 下面。
+- `dup_x2` 插入位置：1 + 2 = 3，即复制当前栈顶 1 个 Slot 的元素，并且插入到当前栈顶的 3 个 Slot 下面。
+- `dup2_x1` 插入位置：2 + 1 = 3，即复制当前栈顶 2 个 Slot 的元素，并且插入到当前栈顶的 3 个 Slot 下面。
+
+**pop 相关指令**
+
+- `pop`：将栈顶的 1 个 Slot 数值出栈。例如 1 个 int 类型数值。
+
+- `pop2`：将栈顶的 2 个 Slot 数值出栈。例如 1 个 double 类型数值，或者 2 个 int 类型数值。
+
 ## 控制转移指令
+
+#### 条件跳转指令
+
+条件跳转指令通常和比较指令结合使用。在条件跳转指令执行前，一般可以先用比较指令进行栈顶元素的准备，然后进行条件跳转。
+
+条件跳转指令有：`ifeq`，`iflt`，`ifle`，`ifne`，`ifgt`，`ifge`，`ifnull`，`ifnonnull`。这些指令都接收两个字节的操作数，用于计算跳转的位置（ 16 位符号整数作为当前位置的 offset ）。
+
+它们的统一含义为：先从栈顶弹出两个要进行比较的元素，测试它是否满足某一条件，如果满足条件，则跳转到给定位置。否则继续执行下一条指令。
+
+| <    | <=   | ==   | !=   | >=   | >    | null   | not null  |
+| ---- | ---- | ---- | ---- | ---- | ---- | ------ | --------- |
+| iflt | ifle | ifeq | ifne | ifge | ifgt | ifnull | ifnonnull |
+
+- `ifeq`：如果栈顶值等于0，则跳转到指定位置。
+- `ifne`：如果栈顶值不等于0，则跳转到指定位置。
+- `iflt`：如果栈顶值小于0，则跳转到指定位置。
+- `ifle`：如果栈顶值小于或等于0，则跳转到指定位置。
+- `ifgt`：如果栈顶值大于0，则跳转到指定位置。
+- `ifge`：如果栈顶值大于或等于0，则跳转到指定位置。
+- `ifnonnull`：如果栈顶值不为null，则跳转到指定位置。
+- `ifnull`：如果栈顶值为null，则跳转到指定位置。
+
+**说明**
+
+- 对于 boolean、byte、char、short 类型的条件分支比较操作，都是使用 int 类型的比较指令完成。
+
+- 对于 long、float、double 类型的条件分支比较操作，则会先执行相应类型的比较运算指令（`lcmp`、`fcmpl`、`fcmpg`、`dcmpl`、`dcmpg`），运算指令会返回一个整型值到操作数栈中，随后再执行 int 类型的条件分支比较操作来完成整个分支跳转。
+
+由于各类型的比较最终都会转为int类型的比较操作，所以 Java 虚拟机提供的 int 类型的条件分支指令是最为丰富和强大的。
+
+**代码示例**
+
+``` java
+int a = 10;
+if (a < 5) {
+    System.out.println("a is less than 5");
+} else {
+    System.out.println("a is greater than or equal to 5");
+}
+```
+
+可以被编译成以下JVM字节码：
+
+```java
+   0: bipush        10
+   2: istore_1
+   3: iload_1
+   4: iconst_5
+   5: if_icmplt     16
+   8: getstatic     #2                  // Field java/lang/System.out:Ljava/io/PrintStream;
+  11: ldc           #3                  // String a is greater than or equal to 5
+  13: invokevirtual #4                  // Method java/io/PrintStream.println:(Ljava/lang/String;)V
+  16: return
+```
+
+其中，第 5 行的 `if_icmplt` 就是使用了`iflt`指令的等效指令。`if_icmplt`指令的前两个参数是要比较的两个整数值，它们先从操作数栈中弹出，然后执行和`iflt`指令相同的比较操作。如果第一个参数小于第二个参数，则跳转到第三个参数指定的目标位置，否则继续执行下一条指令。
+
+#### 比较条件跳转指令
+
+
+
+#### 多条件分支跳转指令
+
+#### 无条件跳转指令
 
 ## 异常处理指令
 
+#### 抛出异常指令
+
+#### 异常处理与异常表
+
 ## 同步控制指令
 
+#### 方法级的同步
+
+#### 方法内指令指令序列的同步
