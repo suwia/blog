@@ -17,7 +17,7 @@ function pipeline() {
           let sign = md5(img.properties.src);
           let data = img.properties.alt.split("|");
           let alt = data[0];
-          let size = "big";
+          let size = "inline";
           if (data.length > 1) {
             size = data[1];
           }
